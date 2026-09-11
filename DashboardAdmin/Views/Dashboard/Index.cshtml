@@ -1,0 +1,101 @@
+@model IEnumerable<DashboardCard>
+@using Microsoft.AspNetCore.Html
+
+@functions {
+    string GetTrendLabel(Trend trend) => trend switch
+    {
+        Trend.Up => "Рост",
+        Trend.Down => "Снижение",
+        _ => "Стабильно"
+    };
+
+    decimal GetAverage(IEnumerable<DashboardCard> cards) =>
+        cards.Any() ? cards.Average(card => card.Value) : 0m;
+}
+
+@{
+    Layout = ViewData["Mode"]?.ToString() == "Print" ? "_PrintLayout" : "_AppLayout";
+    ViewData["Title"] = "Дашборд";
+    var cards = Model.ToList();
+    var totalValue = cards.Sum(card => card.Value);
+    var cardCount = cards.Count;
+    var i = 0;
+
+    @* Шаблонный делегат удобен для локальной разметки этой страницы.
+       Partial лучше использовать для повторного применения представления в разных страницах. *@
+    Func<DashboardCard, IHtmlContent> renderCard = @<article class="card delegated-card">
+        <h2>@item.Title</h2>
+        <p class="value">@item.Value @item.Unit — @GetTrendLabel(item.Trend)</p>
+        @if (item.Value < 0)
+        {
+            <span class="badge negative">Отрицательное значение</span>
+        }
+        <p>@item.Description</p>
+    </article>;
+
+    Func<IEnumerable<DashboardCard>, IHtmlContent> renderSummary = @<section class="totals extended-summary">
+        <h2>Расширенная сводка</h2>
+        <p>Количество: @item.Count()</p>
+        <p>Сумма: @item.Sum(card => card.Value)</p>
+        <p>Среднее значение: @GetAverage(item)</p>
+    </section>;
+}
+
+<!-- Админ-дашборд v1.0 -->
+
+@section PageHeader {
+    <h1>Дашборд</h1>
+    @* Данные за период из контроллера *@
+    <p>@ViewData["ReportPeriod"]: @cardCount показателей, сумма: @totalValue @ViewBag.Currency</p>
+}
+
+@section Actions {
+    <a class="button" asp-controller="Dashboard" asp-action="Print">Печать</a>
+}
+
+<div class="cards-grid">
+    @foreach (var card in cards)
+    {
+        if (i > 0 && i % 3 == 0)
+        {
+            <div class="row-break" aria-hidden="true"></div>
+        }
+
+        if (i % 3 == 0)
+        {
+            <article class="card">
+                <h2>@card.Title</h2>
+                <p class="value">@card.Value @card.Unit</p>
+                <p class="trend">
+                    @if (card.Trend == Trend.Up) { <span>↑</span> }
+                    else if (card.Trend == Trend.Down) { <span>↓</span> }
+                    else { <span>→</span> }
+                    @GetTrendLabel(card.Trend)
+                </p>
+                @if (card.Value < 0)
+                {
+                    <span class="badge negative">Отрицательное значение</span>
+                }
+                <p>@card.Description</p>
+            </article>
+        }
+        else if (i % 3 == 1)
+        {
+            @await Html.PartialAsync("_DashboardCard", card)
+        }
+        else
+        {
+            @renderCard(card)
+        }
+
+        i++;
+    }
+</div>
+
+<section class="totals">
+    <h2>Итоги</h2>
+    <p>Всего карточек: @cardCount</p>
+    <p>Сумма значений: @totalValue</p>
+</section>
+
+@renderSummary(cards)

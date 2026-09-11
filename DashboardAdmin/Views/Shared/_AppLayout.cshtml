@@ -1,0 +1,22 @@
+@{
+    Layout = "_Layout";
+}
+
+<div class="app-layout">
+    <main>
+        @RenderBody()
+    </main>
+    <aside>
+        @await Component.InvokeAsync("TrendSummary")
+    </aside>
+</div>
+
+@section PageHeader {
+    @RenderSection("PageHeader", required: false)
+}
+@section Actions {
+    @RenderSection("Actions", required: false)
+}
+@section Scripts {
+    @await RenderSectionAsync("Scripts", required: false)
+}
