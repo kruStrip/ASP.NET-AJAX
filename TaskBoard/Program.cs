@@ -11,6 +11,7 @@ builder.Services.AddControllersWithViews();
 // Scoped/Transient создавали бы новый пустой список на каждый запрос,
 // и задачи «терялись» бы сразу после редиректа.
 builder.Services.AddSingleton<ITaskService, InMemoryTaskService>();
+builder.Services.AddSingleton<IStoreService, InMemoryStoreService>();
 
 var app = builder.Build();
 

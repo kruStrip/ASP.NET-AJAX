@@ -20,3 +20,11 @@ html {
 body {
   margin-bottom: 60px;
 }
+
+.page-title { text-align: center; font-weight: 700; }
+.product-card { transition: transform .2s ease, box-shadow .2s ease; overflow: hidden; }
+.product-card:hover { transform: translateY(-3px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.12); }
+.product-image { height: 190px; width: 100%; object-fit: cover; }
+.checkout-button { background: #7b2cbf; border-color: #7b2cbf; }
+.checkout-button:hover { background: #6420a1; border-color: #6420a1; }
+@media (max-width: 575.98px) { .product-card { margin-bottom: .5rem; } }
