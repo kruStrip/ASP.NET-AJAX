@@ -9,3 +9,16 @@ document.querySelectorAll('.filter-tag').forEach(tag => {
         tag.classList.add('active');
     });
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+    const badge = document.getElementById('cartBadge');
+    if (!badge) return;
+
+    fetch('/Catalog/GetCartCount')
+        .then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(data => { badge.textContent = data.count; })
+        .catch(error => console.error('Не удалось получить количество товаров:', error));
+});
