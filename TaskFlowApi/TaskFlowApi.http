@@ -1,0 +1,117 @@
+@baseUrl = http://localhost:5299
+
+### ==================== Уровень 1: Проекты ====================
+
+### Создать проект
+POST {{baseUrl}}/api/projects
+Content-Type: application/json
+
+{ "name": "Веб-сайт", "description": "Корпоративный портал" }
+
+### Получить все проекты
+GET {{baseUrl}}/api/projects
+
+### Получить проект по ID
+GET {{baseUrl}}/api/projects/1
+
+### Обновить проект
+PUT {{baseUrl}}/api/projects/1
+Content-Type: application/json
+
+{ "name": "Веб-сайт v2", "description": "Обновлённый портал" }
+
+### Удалить проект
+DELETE {{baseUrl}}/api/projects/2
+
+### Создать проект с пустым именем -> 400
+POST {{baseUrl}}/api/projects
+Content-Type: application/json
+
+{ "name": "", "description": "test" }
+
+### ==================== Уровень 1: Задачи (v1) ====================
+
+### Создать задачу
+POST {{baseUrl}}/api/v1/tasks
+Content-Type: application/json
+
+{ "title": "Сверстать главную", "status": "ToDo", "projectId": 1 }
+
+### Получить задачу
+GET {{baseUrl}}/api/v1/tasks/1
+
+### ==================== Уровень 2: Комментарии ====================
+
+### Добавить комментарий к задаче 1
+POST {{baseUrl}}/api/tasks/1/comments
+Content-Type: application/json
+
+{ "content": "Нужно уточнить ТЗ", "authorId": 1 }
+
+### Получить комментарии задачи 1
+GET {{baseUrl}}/api/tasks/1/comments
+
+### Комментарии к несуществующей задаче -> 404
+GET {{baseUrl}}/api/tasks/999/comments
+
+### Удалить комментарий
+DELETE {{baseUrl}}/api/comments/1
+
+### ==================== Уровень 2: Версионирование ====================
+
+### v1 - есть Description, нет Priority
+GET {{baseUrl}}/api/v1/tasks/1
+
+### v2 - есть Priority, нет Description
+GET {{baseUrl}}/api/v2/tasks/1
+
+### ==================== Уровень 3: Пагинация, фильтрация, сортировка ====================
+
+### Первая страница, статус InProgress, сортировка по дате
+GET {{baseUrl}}/api/v2/tasks?page=1&pageSize=5&status=InProgress&sortBy=dueDate&sortDir=desc
+
+### Поиск по слову
+GET {{baseUrl}}/api/v2/tasks?page=1&pageSize=10&search=верст
+
+### pageSize больше 50 -> 400
+GET {{baseUrl}}/api/v2/tasks?page=1&pageSize=100
+
+### ==================== Уровень 3: Идемпотентность ====================
+
+### Первый запрос — создаёт задачу
+POST {{baseUrl}}/api/v2/tasks
+X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+Content-Type: application/json
+
+{ "title": "Новая задача", "priority": "High", "projectId": 1 }
+
+### Повтор с тем же ключом и телом -> тот же ответ (201, та же задача)
+POST {{baseUrl}}/api/v2/tasks
+X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+Content-Type: application/json
+
+{ "title": "Новая задача", "priority": "High", "projectId": 1 }
+
+### Тот же ключ, но другое тело -> 409 Conflict
+POST {{baseUrl}}/api/v2/tasks
+X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+Content-Type: application/json
+
+{ "title": "Другая задача", "priority": "Low", "projectId": 1 }
+
+### Без ключа -> 400
+POST {{baseUrl}}/api/v2/tasks
+Content-Type: application/json
+
+{ "title": "Без ключа", "priority": "Medium", "projectId": 1 }
+
+### ==================== Уровень 3: Глобальная обработка ошибок ====================
+
+### Запрос к несуществующей задаче -> 404 ProblemDetails
+GET {{baseUrl}}/api/v2/tasks/9999
+
+### Попытка завершить задачу без комментариев -> 422
+PATCH {{baseUrl}}/api/v2/tasks/1/status
+Content-Type: application/json
+
+{ "status": "Done" }
