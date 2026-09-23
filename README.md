@@ -6,5 +6,6 @@
 |--------|-------|----------|
 | Практическая работа №1 | [`TaskBoard/`](TaskBoard/) | Приложение-задачник на ASP.NET Core MVC: middleware, DI, контроллер, маршрутизация, model binding, JSON API |
 | Панель администратора | [`DashboardAdmin/`](DashboardAdmin/) | MVC-дашборд: Razor, вложенные layout, partial и ViewComponent |
+| TaskFlow API | [`TaskFlowApi/`](TaskFlowApi/) | REST API для управления задачами: EF Core + SQLite, DTO, версионирование, пагинация, идемпотентность, глобальная обработка ошибок |
 
 Подробности по запуску каждой работы — в README внутри её папки.
