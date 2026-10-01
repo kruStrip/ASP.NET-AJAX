@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live-центр мониторинга</title>
+  <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+  <main class="page">
+    <header>
+      <h1>Live-центр мониторинга</h1>
+      <p>Статус: <strong id="connection-status" class="status">Подключение…</strong></p>
+      <p>Онлайн: <strong id="online-count">0</strong> · Ваш ID: <code id="connection-id">—</code></p>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Общие сообщения</h2>
+        <div class="row"><input id="broadcast-text" placeholder="Сообщение для всех"><button id="broadcast-button">Отправить всем</button></div>
+        <div class="row"><input id="system-text" placeholder="Системное уведомление"><button id="system-button">HTTP: система</button></div>
+      </article>
+
+      <article class="panel">
+        <h2>Комната</h2>
+        <div class="row"><input id="room-name" placeholder="Название комнаты"><button id="join-button">Войти</button><button id="leave-button" class="secondary">Выйти</button></div>
+        <div class="row"><input id="room-text" placeholder="Сообщение в текущую комнату"><button id="room-button">Отправить в комнату</button></div>
+        <p id="typing-indicator" class="muted"></p>
+      </article>
+
+      <article class="panel">
+        <h2>Приватное сообщение</h2>
+        <div class="row"><input id="recipient-id" placeholder="ID получателя"><input id="private-text" placeholder="Текст"><button id="private-button">Отправить приватно</button></div>
+      </article>
+
+      <article class="panel">
+        <h2>Внешнее HTTP-уведомление</h2>
+        <div class="row"><input id="external-room" placeholder="Комната"><input id="external-text" placeholder="Текст"><button id="external-room-button">В комнату</button></div>
+      </article>
+
+      <article class="panel">
+        <h2>Поток случайных чисел</h2>
+        <div class="row"><input id="stream-max" type="number" min="1" value="100"><button id="stream-start">Старт</button><button id="stream-stop" class="secondary">Стоп</button></div>
+        <output id="stream-values" class="numbers">Поток не запущен</output>
+      </article>
+
+      <article class="panel users">
+        <h2>Подключённые пользователи</h2>
+        <p class="muted">Нажмите на ID, чтобы выбрать получателя приватного сообщения.</p>
+        <table><thead><tr><th>ID подключения</th><th>Комната</th></tr></thead><tbody id="users-list"></tbody></table>
+      </article>
+    </section>
+
+    <section class="panel events-panel">
+      <h2>Лента событий</h2>
+      <ol id="events" aria-live="polite"></ol>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    let currentRoom = "";
+    let typingTimeout;
+    let streamSubscription;
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl("/monitorHub")
+      .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+      .build();
+
+    function event(text, type = "") {
+      const item = document.createElement("li");
+      item.className = type;
+      item.textContent = `${new Date().toLocaleTimeString()} — ${text}`;
+      $("events").prepend(item);
+    }
+
+    function setStatus(text, state = "") {
+      $("connection-status").textContent = text;
+      $("connection-status").className = `status ${state}`;
+    }
+
+    function text(id) { return $(id).value.trim(); }
+    function requireText(value, message) {
+      if (value) return value;
+      event(message, "error");
+      return null;
+    }
+
+    async function invoke(method, ...args) {
+      try { await connection.invoke(method, ...args); }
+      catch (error) { event(`Ошибка: ${error.message}`, "error"); }
+    }
+
+    async function post(url, body) {
+      try {
+        const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } catch (error) { event(`HTTP-ошибка: ${error.message}`, "error"); }
+    }
+
+    connection.on("UserConnected", id => event(`Подключился пользователь ${id}`, "system"));
+    connection.on("UserDisconnected", id => event(`Отключился пользователь ${id}`, "system"));
+    connection.on("ReceiveBroadcast", (sender, message) => event(`${sender}: ${message}`, "broadcast"));
+    connection.on("ReceiveRoomMessage", (sender, message) => event(`[Комната ${currentRoom || "—"}] ${sender}: ${message}`, "room"));
+    connection.on("SystemMessage", message => event(`[Система] ${message}`, "system"));
+    connection.on("ReceivePrivateMessage", (sender, message) => event(`[Приватное] ${sender}: ${message}`, "private"));
+    connection.on("PrivateMessageSent", id => event(`Приватное сообщение отправлено: ${id}`, "private"));
+    connection.on("RoomJoined", room => { currentRoom = room; $("room-name").value = room; event(`Вы вошли в комнату «${room}»`, "room"); });
+    connection.on("RoomLeft", room => { if (currentRoom === room) currentRoom = ""; event(`Вы вышли из комнаты «${room}»`, "room"); });
+    connection.on("OnlineCount", count => $("online-count").textContent = count);
+    connection.on("ActiveUsers", users => {
+      $("users-list").replaceChildren(...users.map(user => {
+        const row = document.createElement("tr");
+        const idCell = document.createElement("td");
+        const idButton = document.createElement("button");
+        idButton.className = "user-id";
+        idButton.dataset.id = user.connectionId;
+        idButton.textContent = user.connectionId;
+        const roomCell = document.createElement("td");
+        roomCell.textContent = user.room;
+        idCell.append(idButton);
+        row.append(idCell, roomCell);
+        return row;
+      }));
+    });
+    connection.on("UserTyping", () => {
+      $("typing-indicator").textContent = "Пользователь печатает…";
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => $("typing-indicator").textContent = "", 2000);
+    });
+
+    connection.onreconnecting(() => setStatus("Переподключение…", "warning"));
+    connection.onreconnected(async id => {
+      $("connection-id").textContent = id;
+      setStatus("Подключено", "connected");
+      event("Соединение восстановлено", "system");
+      if (currentRoom) await invoke("JoinRoom", currentRoom);
+    });
+    connection.onclose(() => setStatus("Соединение потеряно", "error"));
+
+    async function start() {
+      try {
+        await connection.start();
+        $("connection-id").textContent = connection.connectionId;
+        setStatus("Подключено", "connected");
+        event("Соединение с хабом установлено", "system");
+      } catch (error) {
+        setStatus("Соединение потеряно", "error");
+        event(`Не удалось подключиться: ${error.message}`, "error");
+      }
+    }
+
+    $("broadcast-button").onclick = () => { const value = requireText(text("broadcast-text"), "Введите сообщение."); if (value) { invoke("SendBroadcast", value); $("broadcast-text").value = ""; } };
+    $("join-button").onclick = () => { const room = requireText(text("room-name"), "Введите название комнаты."); if (room) invoke("JoinRoom", room); };
+    $("leave-button").onclick = () => { const room = currentRoom || text("room-name"); if (requireText(room, "Вы не находитесь в комнате.")) invoke("LeaveRoom", room); };
+    $("room-button").onclick = () => { const value = requireText(text("room-text"), "Введите сообщение в комнату."); if (value && requireText(currentRoom, "Сначала войдите в комнату.")) { invoke("SendRoomMessage", currentRoom, value); $("room-text").value = ""; } };
+    $("private-button").onclick = () => { const id = requireText(text("recipient-id"), "Введите ID получателя."); const value = requireText(text("private-text"), "Введите приватное сообщение."); if (id && value) invoke("SendPrivateMessage", id, value); };
+    $("system-button").onclick = () => { const value = requireText(text("system-text"), "Введите системное уведомление."); if (value) post("/api/system-message", { text: value }); };
+    $("external-room-button").onclick = () => { const room = requireText(text("external-room"), "Введите комнату."); const value = requireText(text("external-text"), "Введите текст уведомления."); if (room && value) post("/api/room-message", { room, text: value }); };
+    $("users-list").onclick = event => { const id = event.target.dataset.id; if (id) $("recipient-id").value = id; };
+    $("room-text").addEventListener("input", () => {
+      if (!currentRoom) return;
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => invoke("NotifyTyping", currentRoom), 500);
+    });
+    $("stream-start").onclick = () => {
+      streamSubscription?.dispose();
+      $("stream-values").textContent = "";
+      streamSubscription = connection.stream("StreamNumbers", Number($("stream-max").value) || 100).subscribe({
+        next: number => { $("stream-values").textContent = `${number} ${$("stream-values").textContent}`.slice(0, 300); },
+        complete: () => event("Поток чисел завершён", "system"),
+        error: error => event(`Ошибка потока: ${error}`, "error")
+      });
+    };
+    $("stream-stop").onclick = () => { streamSubscription?.dispose(); streamSubscription = null; event("Поток чисел остановлен", "system"); };
+
+    start();
+  </script>
+</body>
+</html>
