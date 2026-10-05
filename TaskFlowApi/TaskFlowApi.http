@@ -1,4 +1,31 @@
-@baseUrl = http://localhost:5299
+@baseUrl = http://localhost:5248
+@token = вставьте_JWT_из_ответа_login
+
+### ==================== Безопасность: регистрация и JWT ====================
+
+### Регистрация (роль User назначается сервером)
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{ "username": "student", "email": "student@example.com", "password": "Secure123!" }
+
+### Вход и получение Bearer-токена
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "student@example.com", "password": "Secure123!" }
+
+### Claims текущего пользователя (без токена -> 401)
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### Создание задачи без роли Author/Admin -> 403
+POST {{baseUrl}}/api/v2/tasks
+Authorization: Bearer {{token}}
+X-Idempotency-Key: 0133df02-7da1-4e18-a52e-bba715127fc2
+Content-Type: application/json
+
+{ "title": "Задача от обычного пользователя", "projectId": 1 }
 
 ### ==================== Уровень 1: Проекты ====================
 

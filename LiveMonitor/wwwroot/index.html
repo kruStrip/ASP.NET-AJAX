@@ -62,6 +62,7 @@
     const $ = id => document.getElementById(id);
     let currentRoom = "";
     let typingTimeout;
+    let typingIndicatorTimeout;
     let streamSubscription;
     const connection = new signalR.HubConnectionBuilder()
       .withUrl("/monitorHub")
@@ -124,10 +125,14 @@
         return row;
       }));
     });
-    connection.on("UserTyping", () => {
+    connection.on("UserTyping", (senderId) => {
+      console.log("Received UserTyping event from:", senderId);
       $("typing-indicator").textContent = "Пользователь печатает…";
-      clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => $("typing-indicator").textContent = "", 2000);
+      clearTimeout(typingIndicatorTimeout);
+      typingIndicatorTimeout = setTimeout(() => {
+        console.log("Clearing typing indicator");
+        $("typing-indicator").textContent = "";
+      }, 2000);
     });
 
     connection.onreconnecting(() => setStatus("Переподключение…", "warning"));
@@ -162,7 +167,10 @@
     $("room-text").addEventListener("input", () => {
       if (!currentRoom) return;
       clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => invoke("NotifyTyping", currentRoom), 500);
+      typingTimeout = setTimeout(() => {
+        console.log("Sending NotifyTyping for room:", currentRoom);
+        invoke("NotifyTyping", currentRoom);
+      }, 500);
     });
     $("stream-start").onclick = () => {
       streamSubscription?.dispose();

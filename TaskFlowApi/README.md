@@ -13,8 +13,18 @@ dotnet run
 ```
 
 При первом запуске автоматически применяются миграции EF Core и создаётся `taskflow.db`
-с seed-данными (один проект и одна задача). Swagger UI: `http://localhost:5299/swagger`.
+с seed-данными (один проект и одна задача). Swagger UI: `http://localhost:5248/swagger`.
 Все проверочные запросы собраны в `TaskFlowApi.http`.
+
+## Безопасность: JWT, роли и права на ресурс
+
+- `POST /api/auth/register` создаёт пользователя с ролью `User`; пароль сохраняется только как хеш `PasswordHasher<AppUser>`.
+- `POST /api/auth/login` выдаёт JWT на один час. В токене находятся `NameIdentifier`, имя, e-mail и роль; ключ разработки находится только в `appsettings.Development.json`. Для production задайте `Jwt__Key`, `Jwt__Issuer` и `Jwt__Audience` через безопасную конфигурацию.
+- Публичными остаются только запросы чтения и регистрация/вход. Создавать и менять проекты и задачи могут `Author`/`Admin`; удаление доступно только `Admin`.
+- Для `PUT` и `PATCH` задачи применяется resource-based policy `CanEditTask`: доступ есть у автора задачи либо у администратора. Автор фиксируется в `CreatedByUserId` при создании и не приходит из тела запроса.
+- Добавлены `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`; HSTS включается вне Development. JWT передаётся только в `Authorization: Bearer`, поэтому для API не используются cookie и CSRF-токены.
+
+Миграция `20261005120000_AddSecurityOwnership` добавляет роль пользователя и автора задачи. Учётную запись с ролью `Admin` нельзя получить через регистрацию: назначение повышенных ролей должно выполняться доверенным администратором/миграцией.
 
 ---
 

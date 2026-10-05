@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using TaskFlowApi.Data;
 using TaskFlowApi.DTOs;
@@ -74,6 +75,7 @@ public class ProjectsController : ControllerBase
     /// <param name="dto">Данные нового проекта.</param>
     /// <response code="201">Проект создан.</response>
     /// <response code="400">Данные проекта не прошли валидацию.</response>
+    [Authorize(Policy = "AuthorOrAdmin")]
     [HttpPost]
     [ProducesResponseType(typeof(ProjectDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -98,6 +100,7 @@ public class ProjectsController : ControllerBase
     /// <param name="dto">Новые данные проекта.</param>
     /// <response code="204">Проект обновлён.</response>
     /// <response code="404">Проект не найден.</response>
+    [Authorize(Policy = "AuthorOrAdmin")]
     [HttpPut("{id:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -121,6 +124,7 @@ public class ProjectsController : ControllerBase
     /// <param name="id">Идентификатор проекта.</param>
     /// <response code="204">Проект удалён.</response>
     /// <response code="404">Проект не найден.</response>
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

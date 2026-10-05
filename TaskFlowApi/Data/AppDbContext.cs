@@ -35,6 +35,11 @@ public class AppDbContext : DbContext
                 .HasForeignKey(t => t.AssignedToId)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            entity.HasOne(t => t.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(t => t.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasMany(t => t.Comments)
                 .WithOne(c => c.TaskItem)
                 .HasForeignKey(c => c.TaskItemId)
@@ -62,6 +67,7 @@ public class AppDbContext : DbContext
             Username = "demo",
             Email = "demo@taskflow.local",
             PasswordHash = "seed-hash"
+            ,Role = "Admin"
         });
 
         modelBuilder.Entity<Project>().HasData(new Project

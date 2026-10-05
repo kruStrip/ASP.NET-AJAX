@@ -1,4 +1,6 @@
 using Asp.Versioning;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaskFlowApi.Data;
@@ -129,6 +131,7 @@ public class TasksV2Controller : ControllerBase
     /// <response code="201">Задача создана.</response>
     /// <response code="400">Данные задачи не прошли валидацию либо отсутствует X-Idempotency-Key.</response>
     /// <response code="409">Idempotency-Key уже использован с другим телом запроса.</response>
+    [Authorize(Policy = "AuthorOrAdmin")]
     [HttpPost]
     [ProducesResponseType(typeof(TaskItemV2Dto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -150,6 +153,7 @@ public class TasksV2Controller : ControllerBase
             Priority = dto.Priority ?? TaskPriority.Medium,
             ProjectId = dto.ProjectId,
             AssignedToId = dto.AssignedToId,
+            CreatedByUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!),
             DueDate = dto.DueDate,
             CreatedAt = DateTime.UtcNow
         };
@@ -166,6 +170,7 @@ public class TasksV2Controller : ControllerBase
     /// <response code="204">Задача обновлена.</response>
     /// <response code="404">Задача не найдена.</response>
     /// <response code="400">Данные задачи не прошли валидацию.</response>
+    [Authorize]
     [HttpPut("{id:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -176,6 +181,12 @@ public class TasksV2Controller : ControllerBase
         if (task is null)
         {
             throw new NotFoundException($"Задача с id={id} не найдена.");
+        }
+
+        if (!(await HttpContext.RequestServices.GetRequiredService<IAuthorizationService>()
+                .AuthorizeAsync(User, task, "CanEditTask")).Succeeded)
+        {
+            return Forbid();
         }
 
         task.Title = dto.Title;
@@ -194,6 +205,7 @@ public class TasksV2Controller : ControllerBase
     /// <response code="204">Статус обновлён.</response>
     /// <response code="404">Задача не найдена.</response>
     /// <response code="422">Нарушено бизнес-правило (нельзя завершить задачу без комментариев).</response>
+    [Authorize]
     [HttpPatch("{id:int}/status")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -204,6 +216,12 @@ public class TasksV2Controller : ControllerBase
         if (task is null)
         {
             throw new NotFoundException($"Задача с id={id} не найдена.");
+        }
+
+        if (!(await HttpContext.RequestServices.GetRequiredService<IAuthorizationService>()
+                .AuthorizeAsync(User, task, "CanEditTask")).Succeeded)
+        {
+            return Forbid();
         }
 
         if (dto.Status == TaskItemStatus.Done && task.Comments.Count == 0)
@@ -220,6 +238,7 @@ public class TasksV2Controller : ControllerBase
     /// <param name="id">Идентификатор задачи.</param>
     /// <response code="204">Задача удалена.</response>
     /// <response code="404">Задача не найдена.</response>
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

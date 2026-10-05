@@ -38,6 +38,12 @@ public class TaskItem
     /// <summary>Пользователь, на которого назначена задача.</summary>
     public AppUser? AssignedTo { get; set; }
 
+    /// <summary>Идентификатор автора задачи.</summary>
+    public int? CreatedByUserId { get; set; }
+
+    /// <summary>Пользователь, создавший задачу.</summary>
+    public AppUser? CreatedByUser { get; set; }
+
     /// <summary>Срок выполнения задачи.</summary>
     public DateTime? DueDate { get; set; }
 

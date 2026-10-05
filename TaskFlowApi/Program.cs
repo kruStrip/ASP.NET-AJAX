@@ -1,10 +1,17 @@
 using System.Reflection;
+using System.Text;
 using System.Text.Json.Serialization;
 using Asp.Versioning;
 using Asp.Versioning.ApiExplorer;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using TaskFlowApi.Authorization;
 using TaskFlowApi.Data;
+using TaskFlowApi.Entities;
 using TaskFlowApi.Exceptions;
 using TaskFlowApi.Middleware;
 
@@ -21,6 +28,31 @@ builder.Services.AddControllers()
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=taskflow.db"));
+
+var jwt = builder.Configuration.GetSection("Jwt");
+var jwtKey = jwt["Key"] ?? throw new InvalidOperationException("Jwt:Key должен быть настроен через конфигурацию или секреты.");
+builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwt["Issuer"],
+            ValidateAudience = true,
+            ValidAudience = jwt["Audience"],
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AuthorOrAdmin", policy => policy.RequireRole("Author", "Admin"));
+    options.AddPolicy("CanEditTask", policy => policy.Requirements.Add(new CanEditTaskRequirement()));
+});
+builder.Services.AddSingleton<IAuthorizationHandler, CanEditTaskHandler>();
 
 builder.Services.AddApiVersioning(options =>
 {
@@ -82,6 +114,20 @@ using (var scope = app.Services.CreateScope())
 
 app.UseExceptionHandler();
 
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        var headers = context.Response.Headers;
+        headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'self'";
+        headers["X-Content-Type-Options"] = "nosniff";
+        headers["X-Frame-Options"] = "DENY";
+        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        return Task.CompletedTask;
+    });
+    await next();
+});
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -91,17 +137,29 @@ if (app.Environment.IsDevelopment())
         var provider = app.Services.GetRequiredService<IApiVersionDescriptionProvider>();
         foreach (var description in provider.ApiVersionDescriptions)
         {
-            options.SwaggerEndpoint($"/swagger/{description.GroupName}/swagger.json", description.GroupName.ToUpperInvariant());
+            var displayName = description.GroupName.ToUpperInvariant();
+            if (description.IsDeprecated)
+            {
+                displayName += " (устарела)";
+            }
+
+            options.SwaggerEndpoint($"/swagger/{description.GroupName}/swagger.json", displayName);
         }
     });
 }
 
 app.UseHttpsRedirection();
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
 app.UseRouting();
 
 app.UseCors(CorsPolicyName);
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseMiddleware<IdempotencyMiddleware>();

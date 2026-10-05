@@ -22,4 +22,9 @@ public class AppUser
 
     /// <summary>Хэш пароля пользователя (никогда не возвращается через API).</summary>
     public string PasswordHash { get; set; } = string.Empty;
+
+    /// <summary>Роль пользователя: User, Author или Admin.</summary>
+    [Required]
+    [StringLength(20)]
+    public string Role { get; set; } = "User";
 }

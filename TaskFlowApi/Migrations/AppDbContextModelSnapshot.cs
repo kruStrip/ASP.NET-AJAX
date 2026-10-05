@@ -31,6 +31,11 @@ namespace TaskFlowApi.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -46,6 +51,7 @@ namespace TaskFlowApi.Migrations
                             Id = 1,
                             Email = "demo@taskflow.local",
                             PasswordHash = "seed-hash",
+                            Role = "Admin",
                             Username = "demo"
                         });
                 });
@@ -147,6 +153,9 @@ namespace TaskFlowApi.Migrations
                     b.Property<int?>("AssignedToId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -174,6 +183,8 @@ namespace TaskFlowApi.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedToId");
+
+                    b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("ProjectId");
 
@@ -220,6 +231,11 @@ namespace TaskFlowApi.Migrations
                         .HasForeignKey("AssignedToId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("TaskFlowApi.Entities.AppUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("TaskFlowApi.Entities.Project", "Project")
                         .WithMany("Tasks")
                         .HasForeignKey("ProjectId")
@@ -227,6 +243,8 @@ namespace TaskFlowApi.Migrations
                         .IsRequired();
 
                     b.Navigation("AssignedTo");
+
+                    b.Navigation("CreatedByUser");
 
                     b.Navigation("Project");
                 });
