@@ -116,15 +116,19 @@ app.UseExceptionHandler();
 
 app.Use(async (context, next) =>
 {
-    context.Response.OnStarting(() =>
+    if (!context.Request.Path.StartsWithSegments("/swagger"))
     {
-        var headers = context.Response.Headers;
-        headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'self'";
-        headers["X-Content-Type-Options"] = "nosniff";
-        headers["X-Frame-Options"] = "DENY";
-        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-        return Task.CompletedTask;
-    });
+        context.Response.OnStarting(() =>
+        {
+            var headers = context.Response.Headers;
+            headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'self'";
+            headers["X-Content-Type-Options"] = "nosniff";
+            headers["X-Frame-Options"] = "DENY";
+            headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+            return Task.CompletedTask;
+        });
+    }
+
     await next();
 });
 

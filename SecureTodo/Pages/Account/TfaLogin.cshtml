@@ -1,0 +1,13 @@
+@page
+@model SecureTodo.Pages.Account.TfaLoginModel
+@{ ViewData["Title"] = "Двухфакторная проверка"; }
+
+<h1>Код двухфакторной аутентификации</h1>
+<p>Введите шестизначный код из приложения-аутентификатора.</p>
+<form method="post" class="col-md-4">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <input type="hidden" asp-for="ReturnUrl" />
+    <input type="hidden" asp-for="RememberMe" />
+    <div class="mb-3"><label asp-for="Code"></label><input asp-for="Code" class="form-control" autocomplete="one-time-code" /><span asp-validation-for="Code" class="text-danger"></span></div>
+    <button type="submit" class="btn btn-primary">Подтвердить</button>
+</form>

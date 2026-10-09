@@ -1,0 +1,25 @@
+@page
+@model SecureTodo.Pages.Account.TwoFactorModel
+@{ ViewData["Title"] = "Двухфакторная аутентификация"; }
+
+<h1>Двухфакторная аутентификация</h1>
+@if (TempData["Status"] is string status) { <div class="alert alert-success">@status</div> }
+
+@if (Model.IsEnabled)
+{
+    <p>2FA включена.</p>
+    <form method="post" asp-page-handler="Disable">
+        <button class="btn btn-danger" type="submit">Отключить 2FA</button>
+    </form>
+}
+else
+{
+    <p>Отсканируйте QR-код приложением Google Authenticator или Microsoft Authenticator.</p>
+    <img src="@Model.QrCodeDataUri" alt="QR-код для настройки 2FA" width="240" height="240" />
+    <p class="text-break"><strong>Ключ:</strong> @Model.SharedKey</p>
+    <form method="post" asp-page-handler="Enable" class="col-md-4">
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+        <div class="mb-3"><label asp-for="Code"></label><input asp-for="Code" class="form-control" autocomplete="one-time-code" /><span asp-validation-for="Code" class="text-danger"></span></div>
+        <button class="btn btn-primary" type="submit">Включить 2FA</button>
+    </form>
+}

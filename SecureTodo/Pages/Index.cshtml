@@ -1,0 +1,20 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Главная";
+}
+
+<div class="text-center py-5">
+    <h1 class="display-4">Безопасный Todo-менеджер</h1>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <p class="lead">Здравствуйте, @Model.FullName!</p>
+        <a class="btn btn-primary" asp-page="/Tasks/Index">Открыть задачи</a>
+    }
+    else
+    {
+        <p class="lead">Войдите или зарегистрируйтесь, чтобы создавать задачи.</p>
+        <a class="btn btn-primary" asp-page="/Account/Login">Войти</a>
+        <a class="btn btn-outline-primary" asp-page="/Account/Register">Зарегистрироваться</a>
+    }
+</div>
