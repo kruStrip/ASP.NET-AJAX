@@ -1,0 +1,12 @@
+@{
+    Layout = "_Layout";
+}
+
+<main class="print-content">
+    @RenderBody()
+</main>
+
+@{
+    IgnoreSection("PageHeader");
+    IgnoreSection("Actions");
+}

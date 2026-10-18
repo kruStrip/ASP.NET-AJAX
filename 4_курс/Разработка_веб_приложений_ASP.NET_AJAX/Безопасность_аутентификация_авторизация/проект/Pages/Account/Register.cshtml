@@ -1,0 +1,14 @@
+@page
+@model SecureTodo.Pages.Account.RegisterModel
+@{ ViewData["Title"] = "Регистрация"; }
+
+<h1>Регистрация</h1>
+<form method="post" class="col-md-5">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <div class="mb-3"><label asp-for="Input.FullName"></label><input asp-for="Input.FullName" class="form-control" /><span asp-validation-for="Input.FullName" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Input.Email"></label><input asp-for="Input.Email" class="form-control" /><span asp-validation-for="Input.Email" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Input.Password"></label><input asp-for="Input.Password" class="form-control" /><span asp-validation-for="Input.Password" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Input.ConfirmPassword"></label><input asp-for="Input.ConfirmPassword" class="form-control" /><span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span></div>
+    <button class="btn btn-primary" type="submit">Зарегистрироваться</button>
+</form>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

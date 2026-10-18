@@ -1,0 +1,31 @@
+@model IEnumerable<TrendSummaryViewModel>
+
+@functions {
+    string GetTrendLabel(Trend trend) => trend switch
+    {
+        Trend.Up => "Рост",
+        Trend.Down => "Снижение",
+        _ => "Стабильно"
+    };
+}
+
+<section class="trend-summary">
+    <h2>Сводка по трендам</h2>
+    @if (!Model.Any())
+    {
+        <p>Нет данных</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var summary in Model)
+            {
+                <li>
+                    <strong>@GetTrendLabel(summary.Trend)</strong>
+                    <span>@summary.Count карточек</span>
+                    <span>Сумма: @summary.TotalValue</span>
+                </li>
+            }
+        </ul>
+    }
+</section>

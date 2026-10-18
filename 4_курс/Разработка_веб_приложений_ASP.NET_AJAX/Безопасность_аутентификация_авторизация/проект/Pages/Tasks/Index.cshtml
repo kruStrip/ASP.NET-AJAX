@@ -1,0 +1,53 @@
+@page
+@model SecureTodo.Pages.Tasks.IndexModel
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService AuthorizationService
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@{
+    ViewData["Title"] = "Задачи";
+    var csrfToken = Antiforgery.GetAndStoreTokens(HttpContext).RequestToken;
+}
+<meta name="csrftoken" content="@csrfToken" />
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Все задачи</h1>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <a class="btn btn-primary" asp-page="Create">Создать задачу</a>
+    }
+</div>
+<div id="ajax-message" class="alert d-none" role="status"></div>
+
+@if (Model.Items.Count == 0)
+{
+    <p>Задач пока нет.</p>
+}
+else
+{
+    <div class="row g-3">
+    @foreach (var item in Model.Items)
+    {
+        var canEdit = (await AuthorizationService.AuthorizeAsync(User, item, "CanEditTask")).Succeeded;
+        <div class="col-md-6">
+            <article class="card h-100" data-task-card="@item.Id">
+                <div class="card-body">
+                    <h2 class="h5">@item.Title</h2>
+                    <p class="card-text">@(item.Description ?? "Без описания")</p>
+                    <p><small>Автор: @item.User?.FullName · @item.CreatedAt.ToLocalTime().ToString("g")</small></p>
+                    <span class="badge @(item.IsCompleted ? "bg-success" : "bg-secondary") task-status">@(item.IsCompleted ? "Выполнена" : "В работе")</span>
+                </div>
+                @if (canEdit)
+                {
+                    <div class="card-footer d-flex gap-2">
+                        <a class="btn btn-sm btn-outline-primary" asp-page="Edit" asp-route-id="@item.Id">Редактировать</a>
+                        <form method="post" asp-page-handler="Delete" asp-route-id="@item.Id"><button class="btn btn-sm btn-outline-danger" type="submit">Удалить</button></form>
+                        @if (!item.IsCompleted)
+                        {
+                            <button class="btn btn-sm btn-success mark-completed" type="button" data-task-id="@item.Id">Отметить выполненной</button>
+                        }
+                    </div>
+                }
+            </article>
+        </div>
+    }
+    </div>
+}

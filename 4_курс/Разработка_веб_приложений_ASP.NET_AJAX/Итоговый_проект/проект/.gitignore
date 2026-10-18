@@ -1,0 +1,13 @@
+bin/
+obj/
+.vs/
+.idea/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+appsettings.Production.json
+coverage/
+TestResults/

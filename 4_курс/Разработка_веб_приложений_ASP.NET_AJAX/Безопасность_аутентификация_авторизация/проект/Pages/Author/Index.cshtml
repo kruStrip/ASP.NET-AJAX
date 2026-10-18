@@ -1,0 +1,6 @@
+@page "/author"
+@model SecureTodo.Pages.Author.IndexModel
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AuthorOnly")]
+@{ ViewData["Title"] = "Раздел авторов"; }
+<h1>Раздел авторов</h1>
+<p>Эта страница доступна ролям Author и Admin. Изменение роли применяется к активной cookie на следующем запросе.</p>

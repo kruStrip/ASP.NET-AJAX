@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — Админ-панель</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="@(ViewData["Mode"]?.ToString() == "Print" ? "print-mode" : null)">
+    @if (ViewData["Mode"]?.ToString() != "Print")
+    {
+        <header class="site-header">
+            <a class="logo" asp-controller="Dashboard" asp-action="Index">Админ-панель</a>
+            <nav aria-label="Основная навигация">
+                <a asp-controller="Dashboard" asp-action="Index">Дашборд</a>
+                <a href="#">Настройки</a>
+            </nav>
+        </header>
+    }
+
+    @if (ViewData["Mode"]?.ToString() != "Print")
+    {
+        <div class="page-heading">
+            @if (IsSectionDefined("PageHeader"))
+            {
+                @RenderSection("PageHeader", required: false)
+            }
+            else
+            {
+                <h1>Панель управления</h1>
+            }
+            @if (IsSectionDefined("Actions"))
+            {
+                <div class="page-actions">@RenderSection("Actions", required: false)</div>
+            }
+        </div>
+    }
+
+    @RenderBody()
+
+    @if (ViewData["Mode"]?.ToString() != "Print")
+    {
+        <footer>© @DateTime.Now.Year Админ-панель</footer>
+    }
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

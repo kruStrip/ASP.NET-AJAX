@@ -1,0 +1,29 @@
+@page "/admin"
+@model SecureTodo.Pages.Admin.IndexModel
+@{ ViewData["Title"] = "Админ-панель"; }
+
+<h1>Админ-панель</h1>
+@if (!string.IsNullOrEmpty(Model.Message)) { <div class="alert @(Model.HasError ? "alert-danger" : "alert-success")">@Model.Message</div> }
+<table class="table align-middle">
+    <thead><tr><th>Имя</th><th>E-mail</th><th>Роли</th><th>Изменить роль</th></tr></thead>
+    <tbody>
+    @foreach (var item in Model.Users)
+    {
+        <tr>
+            <td>@item.FullName</td><td>@item.Email</td><td>@string.Join(", ", item.Roles)</td>
+            <td>
+                <form method="post" class="d-flex gap-2">
+                    <input type="hidden" name="userId" value="@item.Id" />
+                    <select name="role" class="form-select">
+                        @foreach (var role in Model.AvailableRoles)
+                        {
+                            <option value="@role" selected="@(item.Roles.Contains(role))">@role</option>
+                        }
+                    </select>
+                    <button class="btn btn-primary" type="submit">Применить</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

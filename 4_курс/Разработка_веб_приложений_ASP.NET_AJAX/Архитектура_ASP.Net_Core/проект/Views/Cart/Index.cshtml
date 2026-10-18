@@ -1,0 +1,15 @@
+@model TaskBoard.Models.CartViewModel
+@{ ViewData["Title"] = "Корзина"; }
+<h1 class="page-title mb-4">Корзина</h1>
+@if (!Model.Items.Any())
+{
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">Корзина пуста <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button></div>
+    <a class="btn btn-primary" href="/catalog">Перейти в каталог</a>
+}
+else
+{
+    <div class="list-group mb-4">@foreach(var item in Model.Items){<div class="list-group-item d-flex justify-content-between align-items-center"><span>@item.Product.Name <span class="text-muted">× @item.Quantity</span></span><strong>@item.Total.ToString("N0") ₽</strong></div>}</div>
+    <div class="d-flex justify-content-between align-items-center"><strong class="fs-4">Итого: @Model.TotalAmount.ToString("N0") ₽</strong><button type="button" class="btn btn-success checkout-button" data-bs-toggle="modal" data-bs-target="#confirmOrderModal">Оформить заказ</button></div>
+    <form method="post" action="/cart/clear" class="mt-3"><button class="btn btn-outline-secondary">Очистить корзину</button></form>
+    <div class="modal fade" id="confirmOrderModal" tabindex="-1" aria-labelledby="confirmOrderTitle" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h2 class="modal-title h5" id="confirmOrderTitle">Подтверждение заказа</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button></div><div class="modal-body"><p>Оформить заказ на сумму <strong>@Model.TotalAmount.ToString("N0") ₽</strong>?</p><ul class="list-group mb-3">@foreach(var item in Model.Items){<li class="list-group-item">@item.Product.Name — @item.Total.ToString("N0") ₽</li>}</ul></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button><button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="alert('Спасибо за заказ!')">Подтвердить</button></div></div></div></div>
+}

@@ -1,0 +1,44 @@
+@host = http://localhost:5187
+
+### 1. Вход: выполните запрос и скопируйте accessToken/refreshToken ниже
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@todo.com",
+  "password": "Admin123!"
+}
+
+###
+@accessToken = PASTE_ACCESS_TOKEN_HERE
+@refreshToken = PASTE_REFRESH_TOKEN_HERE
+
+### 2. Получить задачи с JWT
+GET {{host}}/api/tasks
+Authorization: Bearer {{accessToken}}
+
+### 3. Создать задачу; UserId намеренно отсутствует и берётся из JWT
+POST {{host}}/api/tasks
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Задача из .http",
+  "description": "Создана авторизованным API-запросом",
+  "isCompleted": false
+}
+
+### 4. Без JWT — ожидается 401 Unauthorized
+GET {{host}}/api/tasks
+
+### 5. Ротация refresh-токена
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### 6. Отозвать все refresh-токены пользователя
+POST {{host}}/api/auth/logout-all
+Authorization: Bearer {{accessToken}}

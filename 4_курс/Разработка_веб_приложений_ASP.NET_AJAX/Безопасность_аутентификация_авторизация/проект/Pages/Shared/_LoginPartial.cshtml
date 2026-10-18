@@ -1,0 +1,26 @@
+﻿@using Microsoft.AspNetCore.Identity
+@inject SignInManager<AppUser> SignInManager
+@inject UserManager<AppUser> UserManager
+
+<ul class="navbar-nav">
+@if (SignInManager.IsSignedIn(User))
+{
+    <li class="nav-item">
+        <a class="nav-link text-dark" asp-page="/Account/TwoFactor" title="Профиль">Профиль: @User.Identity?.Name</a>
+    </li>
+    <li class="nav-item">
+        <form class="form-inline" method="post" asp-page="/Account/Logout">
+            <button type="submit" class="nav-link btn btn-link text-dark">Выйти</button>
+        </form>
+    </li>
+}
+else
+{
+    <li class="nav-item">
+        <a class="nav-link text-dark" asp-page="/Account/Register">Зарегистрироваться</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link text-dark" asp-page="/Account/Login">Войти</a>
+    </li>
+}
+</ul>
