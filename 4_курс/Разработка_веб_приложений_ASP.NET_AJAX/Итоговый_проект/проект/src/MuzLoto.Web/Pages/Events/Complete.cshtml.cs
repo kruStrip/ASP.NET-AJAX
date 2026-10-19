@@ -24,6 +24,19 @@ public class CompleteModel(AppDbContext db, StaffAccess access, BookingWorkflow 
         }
         Sessions = await query.OrderBy(x => x.StartsAt).ToListAsync(ct);
     }
+    public async Task<IActionResult> OnPostReopenAsync(Guid id, CancellationToken ct)
+    {
+        if (!User.IsInRole("Admin")) return Forbid();
+        if (!await access.CanManageAsync(User, id, ct)) return Forbid();
+        try
+        {
+            await workflow.ReopenSessionAsync(id, ct);
+            return AjaxResult.Success(this,
+                "Завершение отменено. Продажи остаются закрытыми; включите их в редактировании игры. Удалённые заявки не восстановлены.");
+        }
+        catch (BusinessException ex) { return AjaxResult.Failure(this, ex); }
+    }
+
     public async Task<IActionResult> OnPostAsync(Guid id, CancellationToken ct)
     {
         if (!await access.CanManageAsync(User, id, ct)) return Forbid();

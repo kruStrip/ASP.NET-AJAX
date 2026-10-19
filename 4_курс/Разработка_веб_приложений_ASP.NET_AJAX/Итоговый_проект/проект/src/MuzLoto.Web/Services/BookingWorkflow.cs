@@ -154,6 +154,88 @@ public sealed class BookingWorkflow(
         await NotifyAsync(sessionId, "TicketsAvailabilityChanged", bookingId);
     }
 
+    /// <summary>Restore a cancelled booking within one hour, retaining any previously recorded payment.</summary>
+    public async Task RestoreCancelledAsync(Guid bookingId, string userId, CancellationToken ct = default)
+    {
+        Guid sessionId;
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var booking = await db.Bookings.Include(x => x.GameSession)
+                .SingleOrDefaultAsync(x => x.Id == bookingId, ct)
+                ?? throw new BusinessException("Заявка не найдена.", 404);
+            if (booking.Status != BookingStatus.Cancelled || !booking.CancelledAt.HasValue)
+                throw new BusinessException("Восстановить можно только отменённую заявку.");
+            var now = DateTimeOffset.UtcNow;
+            if (booking.CancelledAt.Value > now || now - booking.CancelledAt.Value > TimeSpan.FromHours(1))
+                throw new BusinessException("Истёк часовой срок восстановления заявки.");
+            var session = booking.GameSession;
+            if (session.CompletedAt.HasValue || !session.SalesOpen)
+                throw new BusinessException("Игра завершена или продажи закрыты. Восстановление недоступно.");
+            var cancellation = await db.BookingStatusHistory
+                .Where(x => x.BookingId == bookingId && x.NewStatus == BookingStatus.Cancelled)
+                .OrderByDescending(x => x.ChangedAt).ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct)
+                ?? throw new BusinessException("Не удалось определить исходный статус заявки.");
+            var previousStatus = cancellation.OldStatus;
+            if (previousStatus is not (BookingStatus.Pending or BookingStatus.Confirmed))
+                throw new BusinessException("Исходный статус заявки некорректен.");
+
+            if (previousStatus == BookingStatus.Confirmed)
+            {
+                // Never create a second payment when restoring a previously paid booking.
+                if (!await db.Payments.AnyAsync(x => x.BookingId == bookingId, ct))
+                    throw new BusinessException("Платёж не найден. Требуется проверка сотрудником.");
+                var reserved = await db.Bookings
+                    .Where(x => x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed)
+                    .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
+                if (!CapacityCalculator.CanConfirm(session.Capacity, reserved, booking.Quantity))
+                    throw new BusinessException("Недостаточно свободных билетов для восстановления.");
+            }
+
+            booking.Status = previousStatus;
+            booking.CancelledAt = null;
+            db.BookingStatusHistory.Add(new BookingStatusHistory
+            {
+                BookingId = booking.Id, OldStatus = BookingStatus.Cancelled,
+                NewStatus = previousStatus, ChangedByUserId = userId, ChangedAt = now,
+                Reason = "Восстановление сотрудником в течение одного часа"
+            });
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            sessionId = session.Id;
+        }
+        catch (Exception ex) when (IsSerializationFailure(ex))
+        {
+            throw new BusinessException("Состав мест изменился одновременно. Повторите запрос.");
+        }
+        await NotifyAsync(sessionId, "BookingUpdated", bookingId);
+        await NotifyAsync(sessionId, "TicketsAvailabilityChanged", bookingId);
+    }
+
+    /// <summary>Undo an accidentally completed event; deleted pending bookings are not recreated.</summary>
+    public async Task ReopenSessionAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var session = await db.GameSessions.SingleOrDefaultAsync(x => x.Id == sessionId, ct)
+                ?? throw new BusinessException("Игра не найдена.", 404);
+            if (!session.CompletedAt.HasValue) return;
+            session.CompletedAt = null;
+            // Deliberately keep SalesOpen=false: the admin must explicitly reopen sales
+            // in Edit, avoiding accidental acceptance of new external bookings.
+            session.SalesOpen = false;
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch (Exception ex) when (IsSerializationFailure(ex))
+        {
+            throw new BusinessException("Состояние игры изменилось. Повторите запрос.");
+        }
+        await NotifyAsync(sessionId, "GameReopened", sessionId);
+    }
+
     public async Task CompleteSessionAsync(Guid sessionId, CancellationToken ct = default)
     {
         try

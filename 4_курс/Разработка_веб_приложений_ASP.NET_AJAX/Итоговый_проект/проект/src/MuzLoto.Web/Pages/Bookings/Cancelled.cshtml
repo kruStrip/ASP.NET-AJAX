@@ -1,0 +1,22 @@
+@page "/bookings/cancelled"
+@model MuzLoto.Web.Pages.Bookings.CancelledModel
+@{ ViewData["Title"] = "Восстановление заявок"; }
+<div class="page-heading"><div><div class="eyebrow">Доступно в течение часа после отмены</div>
+<h1>Отменённые заявки</h1>
+<p class="muted">При восстановлении оплаченного заказа проверяется наличие мест. Дополнительный платёж не создаётся. Денежные возвраты осуществляются отдельно.</p>
+</div></div>
+<div class="card-list" data-live-list>
+@foreach (var b in Model.Bookings)
+{
+<article class="booking-card" data-session-id="@b.GameSessionId"><div>
+<span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</span>
+<h2>@b.TeamName</h2>
+<p>@b.CustomerName · @b.Quantity бил. · @((b.Quantity * b.TicketPriceSnapshot).ToString("N2")) ₽</p>
+<span class="status cancelled">Отменена @(b.CancelledAt.HasValue ? ScheduleTime.ToLocal(b.CancelledAt.Value, b.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm") : "—")</span>
+</div><div class="button-stack">
+<form method="post" asp-page-handler="Restore" data-ajax-action="booking-restore" data-confirm="Восстановить заявку? Для оплаченной заявки места будут заняты повторно, новый платёж не создаётся.">
+<input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Восстановить</button>
+</form></div></article>
+}
+@if (Model.Bookings.Count == 0) { <p class="muted">Нет отменённых заявок, доступных для восстановления.</p> }
+</div>

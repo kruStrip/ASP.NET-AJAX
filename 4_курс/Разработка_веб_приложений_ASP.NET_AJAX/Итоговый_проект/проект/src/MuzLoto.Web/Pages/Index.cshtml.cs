@@ -28,7 +28,12 @@ public class IndexModel(AppDbContext db) : PageModel
         Pending = await bookings.CountAsync(x => x.Status == BookingStatus.Pending, ct);
         SoldTickets = await bookings.Where(x => x.Status == BookingStatus.Confirmed)
             .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
-        Revenue = await bookings.Where(x => x.Status == BookingStatus.Confirmed)
-            .SumAsync(x => (decimal?)(x.Quantity * x.TicketPriceSnapshot), ct) ?? 0;
+        var payments = db.Payments.Where(x => x.Status == PaymentStatus.Confirmed);
+        if (!User.IsInRole("Admin"))
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            payments = payments.Where(x => x.Booking.GameSession.Staff.Any(a => a.UserId == userId));
+        }
+        Revenue = await payments.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
     }
 }

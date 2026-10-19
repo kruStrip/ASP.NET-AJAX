@@ -1,6 +1,6 @@
 # МузЛото — информационная система мероприятий
 
-**Этап 2: ASP.NET Core 8, PostgreSQL, Razor Pages, JWT REST API v1/v2, AJAX, SignalR.**
+**Этап 3: ASP.NET Core 8, PostgreSQL, Razor Pages, JWT REST API v1/v2, AJAX, SignalR; восстановление отмен и сохранение финансовой истории.**
 
 Разработка идёт по единому техническому заданию. Существующая клиентская форма FormDesigner **остаётся**; система принимает её заявки через отдельный адаптер (реальное сопоставление полей ещё не проверено).
 
@@ -32,3 +32,7 @@ bash scripts/dev.sh
 Посмотреть [HTTP-примеры](requests/MuzLoto-API.http), [статус модулей](docs/STATUS.md) и [предположения по FormDesigner](docs/FORMDESIGNER.md).
 
 После генерации initial migrations файлы `src/MuzLoto.Web/Data/Migrations/*.cs` нужно закоммитить. Для реальных данных необходимы тесты, проверка поставщика формы, HTTPS и аудит безопасности.
+
+## Этап 3
+
+[Что перенесено из старого Google Apps Script](docs/LEGACY_GOOGLE_SHEETS.md) · [Проверка и ограничения этапа 3](docs/STAGE3.md).

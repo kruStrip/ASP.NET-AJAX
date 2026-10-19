@@ -10,8 +10,14 @@
 @if (s.CompletedAt.HasValue) { <span class="status cancelled">Завершено</span> }</div>
 @if (!s.CompletedAt.HasValue)
 {
-<form method="post" data-ajax-action="game-complete" data-confirm="Удалить все неоплаченные заявки этой игры и завершить мероприятие? Операция необратима."><input name="id" type="hidden" value="@s.Id" />
+<form method="post" data-ajax-action="game-complete" data-confirm="Удалить все неоплаченные заявки этой игры и завершить мероприятие? Удалённые заявки восстановить нельзя."><input name="id" type="hidden" value="@s.Id" />
 <button class="button danger" type="submit">Игра прошла</button></form>
+}
+else if (User.IsInRole("Admin"))
+{
+<form method="post" asp-page-handler="Reopen" data-ajax-action="game-reopen" data-confirm="Отменить завершение игры? Удалённые заявки не восстановятся, продажи останутся закрытыми до ручного открытия.">
+<input name="id" type="hidden" value="@s.Id" />
+<button class="button secondary" type="submit">Вернуть игру в работу</button></form>
 }
 </article>
 }

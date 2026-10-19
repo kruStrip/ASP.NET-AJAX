@@ -14,7 +14,11 @@ public class IndexModel(AppDbContext db) : PageModel
     public List<SessionRow> Sessions { get; private set; } = new();
     public async Task OnGetAsync(CancellationToken ct)
     {
-        var q = db.GameSessions.Include(x => x.Game).AsNoTracking().AsQueryable();
+        // The agreed specification retains completed games in the operational view for 3 days.
+        // Archival is a read-view concern; data and paid bookings remain in the database.
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-3);
+        var q = db.GameSessions.Include(x => x.Game).AsNoTracking()
+            .Where(x => x.CompletedAt == null || x.CompletedAt >= cutoff);
         var bq = db.Bookings.AsQueryable();
         if (!User.IsInRole("Admin"))
         {
