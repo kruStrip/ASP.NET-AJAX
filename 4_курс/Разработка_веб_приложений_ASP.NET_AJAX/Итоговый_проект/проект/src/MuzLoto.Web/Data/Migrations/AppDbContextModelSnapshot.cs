@@ -501,6 +501,55 @@ namespace MuzLoto.Web.Data.Migrations
                     b.ToTable("Payments");
                 });
 
+            modelBuilder.Entity("MuzLoto.Web.Domain.Refund", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CancelledByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CompletedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TransferReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN (0, 1)");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("Refunds");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -643,6 +692,17 @@ namespace MuzLoto.Web.Data.Migrations
                     b.Navigation("ConfirmedByUser");
                 });
 
+            modelBuilder.Entity("MuzLoto.Web.Domain.Refund", b =>
+                {
+                    b.HasOne("MuzLoto.Web.Domain.Payment", "Payment")
+                        .WithMany("Refunds")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Payment");
+                });
+
             modelBuilder.Entity("MuzLoto.Web.Domain.AppUser", b =>
                 {
                     b.Navigation("EventAssignments");
@@ -669,6 +729,11 @@ namespace MuzLoto.Web.Data.Migrations
                     b.Navigation("Images");
 
                     b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("MuzLoto.Web.Domain.Payment", b =>
+                {
+                    b.Navigation("Refunds");
                 });
 #pragma warning restore 612, 618
         }
