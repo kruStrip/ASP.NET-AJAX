@@ -12,3 +12,6 @@
 appsettings.Production.json
 coverage/
 TestResults/
+
+# Browser client managed with npm; generated at setup time
+node_modules/

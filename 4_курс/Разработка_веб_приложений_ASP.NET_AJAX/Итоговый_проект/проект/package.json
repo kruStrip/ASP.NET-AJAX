@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "name": "muzloto-admin-assets",
+  "version": "0.2.0",
+  "description": "Self-hosted SignalR browser client for the MuzLoto admin UI",
+  "dependencies": {
+    "@microsoft/signalr": "^8.0.0"
+  }
+}

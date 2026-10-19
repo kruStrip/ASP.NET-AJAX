@@ -30,9 +30,8 @@ public class CompleteModel(AppDbContext db, StaffAccess access, BookingWorkflow 
         try
         {
             await workflow.CompleteSessionAsync(id, ct);
-            TempData["Notice"] = "Игра завершена. Неоплаченные заявки удалены без возможности восстановления.";
+            return AjaxResult.Success(this, "Игра завершена. Неоплаченные заявки удалены без возможности восстановления.");
         }
-        catch (BusinessException ex) { TempData["Error"] = ex.Message; }
-        return RedirectToPage();
+        catch (BusinessException ex) { return AjaxResult.Failure(this, ex); }
     }
 }

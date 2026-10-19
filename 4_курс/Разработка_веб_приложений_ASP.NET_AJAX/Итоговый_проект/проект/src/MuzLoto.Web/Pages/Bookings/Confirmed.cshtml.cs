@@ -13,6 +13,7 @@ namespace MuzLoto.Web.Pages.Bookings;
 public class ConfirmedModel(AppDbContext db, StaffAccess access, BookingWorkflow workflow) : PageModel
 {
     public List<Booking> Bookings { get; private set; } = new();
+    public List<Guid> AccessibleSessionIds { get; private set; } = new();
     public async Task OnGetAsync(CancellationToken ct)
     {
         var query = db.Bookings.Include(x => x.GameSession).ThenInclude(x => x.Game).AsNoTracking()
@@ -22,6 +23,13 @@ public class ConfirmedModel(AppDbContext db, StaffAccess access, BookingWorkflow
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             query = query.Where(x => x.GameSession.Staff.Any(a => a.UserId == userId));
         }
+        var scope = db.GameSessions.AsNoTracking().Where(s => s.CompletedAt == null);
+        if (!User.IsInRole("Admin"))
+        {
+            var uid = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            scope = scope.Where(s => s.Staff.Any(a => a.UserId == uid));
+        }
+        AccessibleSessionIds = await scope.Select(s => s.Id).Take(250).ToListAsync(ct);
         Bookings = await query.OrderBy(x => x.GameSession.StartsAt).Take(200).ToListAsync(ct);
     }
     public async Task<IActionResult> OnPostCancelAsync(Guid id, CancellationToken ct)
@@ -33,9 +41,8 @@ public class ConfirmedModel(AppDbContext db, StaffAccess access, BookingWorkflow
         try
         {
             await workflow.CancelAsync(id, User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct);
-            TempData["Notice"] = "Покупка отменена, билеты освобождены. Возврат денег оформляется отдельно.";
+            return AjaxResult.Success(this, "Покупка отменена, билеты освобождены. Возврат денег оформляется отдельно.");
         }
-        catch (BusinessException ex) { TempData["Error"] = ex.Message; }
-        return RedirectToPage();
+        catch (BusinessException ex) { return AjaxResult.Failure(this, ex); }
     }
 }

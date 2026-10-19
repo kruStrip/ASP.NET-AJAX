@@ -4,10 +4,10 @@
 <div class="page-heading"><div><div class="eyebrow">Актуальное расписание</div><h1>Все игры</h1></div>
 @if (User.IsInRole("Admin")) { <a class="button" asp-page="/Events/Create">Добавить игру</a> }
 </div>
-<div class="card-list">
+<div class="card-list" data-live-list>
 @foreach (var row in Model.Sessions)
 {
-    <article class="booking-card"><div><span class="eyebrow">@ScheduleTime.ToLocal(row.Session.StartsAt, row.Session.TimeZoneId).ToString("dd.MM.yyyy HH:mm") (@row.Session.TimeZoneId)</span><h2>@row.Session.Game.Title</h2>
+    <article class="booking-card" data-session-id="@row.Session.Id"><div><span class="eyebrow">@ScheduleTime.ToLocal(row.Session.StartsAt, row.Session.TimeZoneId).ToString("dd.MM.yyyy HH:mm") (@row.Session.TimeZoneId)</span><h2>@row.Session.Game.Title</h2>
     <p class="muted">@row.Session.Venue · @row.Session.TicketPrice.ToString("N0") ₽ / билет</p>
     <p>Продано: <b>@row.Reserved</b> / @row.Session.Capacity · Осталось: <b>@row.Remaining</b></p>
     <span class="status @(row.Session.CompletedAt.HasValue ? "cancelled" : row.Session.SalesOpen ? "confirmed" : "pending")">@(row.Session.CompletedAt.HasValue ? "Игра прошла" : row.Session.SalesOpen ? "Продажа открыта" : "Продажа закрыта")</span></div>

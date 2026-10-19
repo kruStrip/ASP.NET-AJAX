@@ -1,9 +1,13 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Microsoft.EntityFrameworkCore;
 using MuzLoto.Web.Data;
 using MuzLoto.Web.Domain;
 using MuzLoto.Web.Hubs;
 using MuzLoto.Web.Services;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 var connection = builder.Configuration.GetConnectionString("Default")
@@ -29,8 +33,60 @@ builder.Services.ConfigureApplicationCookie(o =>
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Lax;
     o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; // local HTTP permitted, production HTTPS required
+    o.Events.OnRedirectToLogin = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest" || ctx.Request.Path.StartsWithSegments("/api"))
+        { ctx.Response.StatusCode = 401; return Task.CompletedTask; }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+    o.Events.OnRedirectToAccessDenied = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest" || ctx.Request.Path.StartsWithSegments("/api"))
+        { ctx.Response.StatusCode = 403; return Task.CompletedTask; }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+});
+// Identity's cookie remains the default for Razor Pages. API controllers explicitly use JWT.
+var jwtKey = JwtTokenService.RequireSigningKey(builder.Configuration);
+builder.Services.AddAuthentication().AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateIssuerSigningKey = true,
+        ValidateLifetime = true,
+        RequireExpirationTime = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "MuzLoto",
+        ValidAudience = builder.Configuration["Jwt:Audience"] ?? "MuzLoto.Api",
+        IssuerSigningKey = new SymmetricSecurityKey(jwtKey),
+        RoleClaimType = System.Security.Claims.ClaimTypes.Role,
+        NameClaimType = System.Security.Claims.ClaimTypes.Name,
+        ClockSkew = TimeSpan.FromSeconds(15)
+    };
 });
 builder.Services.AddAuthorization();
+builder.Services.AddProblemDetails();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = "МузЛото REST API", Version = "v1/v2" });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization", Type = SecuritySchemeType.Http,
+        Scheme = "bearer", BearerFormat = "JWT", In = ParameterLocation.Header,
+        Description = "JWT access token from POST /api/auth/token"
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecurityScheme
+        {
+            Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+        }] = Array.Empty<string>()
+    });
+});
 builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AuthorizeFolder("/");
@@ -41,9 +97,16 @@ builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddScoped<BookingWorkflow>();
 builder.Services.AddScoped<StaffAccess>();
+builder.Services.AddScoped<SessionCrud>();
+builder.Services.AddScoped<JwtTokenService>();
 
 var app = builder.Build();
-if (!app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+else
 {
     app.UseExceptionHandler("/Error");
     app.UseHsts();

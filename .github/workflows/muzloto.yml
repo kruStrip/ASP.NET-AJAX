@@ -1,4 +1,4 @@
-name: MuzLoto build and unit tests
+name: MuzLoto build, tests and PostgreSQL smoke
 on:
   push:
     paths:
@@ -8,17 +8,80 @@ on:
     paths:
       - '4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект/**'
       - '.github/workflows/muzloto.yml'
+  workflow_dispatch:
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: muzloto
+          POSTGRES_PASSWORD: test_only_in_ephemeral_ci
+          POSTGRES_DB: muzloto_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U muzloto -d muzloto_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ConnectionStrings__Default: Host=localhost;Port=5432;Database=muzloto_dev;Username=muzloto;Password=test_only_in_ephemeral_ci
+      Jwt__Issuer: MuzLoto
+      Jwt__Audience: MuzLoto.Api
+      BootstrapAdmin__Email: admin@ci.invalid
+      BootstrapAdmin__Password: Temporary_CI_password_456!
+    defaults:
+      run:
+        working-directory: 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Restore and build
-        working-directory: 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект
+      - name: Set ephemeral JWT key
+        run: echo "Jwt__Key=$(openssl rand -hex 48)" >> "$GITHUB_ENV"
+      - name: Build
         run: dotnet build src/MuzLoto.Web/MuzLoto.Web.csproj -c Release
       - name: Unit tests
-        working-directory: 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект
-        run: dotnet test tests/MuzLoto.Tests/MuzLoto.Tests.csproj -c Release
+        run: dotnet test tests/MuzLoto.Tests/MuzLoto.Tests.csproj -c Release --no-build --filter 'Category!=Integration'
+      - name: Restore EF tools
+        run: dotnet tool restore
+      - name: Prepare migrations and apply PostgreSQL schema
+        run: |
+          cd src/MuzLoto.Web
+          if ! find Data/Migrations -maxdepth 1 -name '*_InitialCreate.cs' -print -quit 2>/dev/null | grep -q .; then
+            dotnet tool run dotnet-ef migrations add InitialCreate \
+              --project . --startup-project . --output-dir Data/Migrations
+          fi
+          dotnet tool run dotnet-ef database update --project . --startup-project .
+      - name: PostgreSQL integration tests (isolated CI database)
+        env:
+          MUZLOTO_PG_TEST: "1"
+        run: dotnet test tests/MuzLoto.Tests/MuzLoto.Tests.csproj -c Release --no-build --filter 'Category=Integration'
+      - name: Install browser SignalR client
+        run: bash scripts/install-client.sh
+      - name: Upload generated initial migrations
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzloto-ef-migrations
+          path: 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект/src/MuzLoto.Web/Data/Migrations/
+          if-no-files-found: error
+      - name: HTTP smoke — startup, cookie + JWT authentication
+        run: |
+          dotnet run --no-build -c Release --project src/MuzLoto.Web/MuzLoto.Web.csproj \
+            --urls http://127.0.0.1:5080 > /tmp/muzloto-server.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || :; cat /tmp/muzloto-server.log' EXIT
+          curl --retry 20 --retry-connrefused --retry-delay 2 --fail --silent \
+            http://127.0.0.1:5080/health | grep -q '"ok"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5080/api/v2/sessions)" = 401
+          token=$(curl --fail --silent -H 'Content-Type: application/json' \
+            -d '{"email":"admin@ci.invalid","password":"Temporary_CI_password_456!"}' \
+            http://127.0.0.1:5080/api/auth/token | python3 -c 'import json,sys;print(json.load(sys.stdin)["accessToken"])')
+          curl --fail --silent -H "Authorization: Bearer $token" \
+            http://127.0.0.1:5080/api/v2/sessions | grep -q '"items"'
+          curl --fail --silent \
+            http://127.0.0.1:5080/lib/signalr/signalr.min.js | grep -q 'signalR'

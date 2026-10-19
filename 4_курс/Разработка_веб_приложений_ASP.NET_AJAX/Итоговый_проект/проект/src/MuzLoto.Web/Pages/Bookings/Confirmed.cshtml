@@ -2,15 +2,17 @@
 @model MuzLoto.Web.Pages.Bookings.ConfirmedModel
 @{ ViewData["Title"] = "Покупки билетов"; }
 <div class="page-heading"><div><div class="eyebrow">Подтверждённые заказы</div><h1>Покупки билетов</h1></div></div>
-<div class="card-list">
+<div class="card-list" data-live-list>
 @foreach (var b in Model.Bookings)
 {
-<article class="booking-card"><div><span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM HH:mm") (@b.GameSession.TimeZoneId)</span>
+<article class="booking-card" data-session-id="@b.GameSessionId"><div><span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM HH:mm") (@b.GameSession.TimeZoneId)</span>
 <h2>@b.TeamName</h2><p>@b.CustomerName · @b.Quantity бил. · @((b.Quantity*b.TicketPriceSnapshot).ToString("N2")) ₽</p>
 <p><a href="tel:@b.Phone">@b.Phone</a> @if (!string.IsNullOrWhiteSpace(b.Telegram)) { <span>· Telegram: @b.Telegram</span> }</p>
 <span class="status confirmed">Оплата подтверждена</span></div>
-<form method="post" asp-page-handler="Cancel" data-confirm="Отменить подтверждённую покупку? Места вернутся в продажу, автоматического возврата денег нет.">
+<form method="post" asp-page-handler="Cancel" data-ajax-action="booking-cancel" data-confirm="Отменить подтверждённую покупку? Места вернутся в продажу, автоматического возврата денег нет.">
 <input type="hidden" name="id" value="@b.Id" /><button class="button secondary" type="submit">Отменить</button></form></article>
 }
 @if (Model.Bookings.Count == 0) { <p class="muted">Подтверждённых покупок активных игр нет.</p> }
 </div>
+
+@foreach (var sessionId in Model.AccessibleSessionIds) { <span hidden data-signalr-session="@sessionId"></span> }

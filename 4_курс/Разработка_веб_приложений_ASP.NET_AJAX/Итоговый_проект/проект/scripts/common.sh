@@ -10,7 +10,7 @@ set -a
 # shellcheck disable=SC1091
 source .env
 set +a
-for var in POSTGRES_PASSWORD MUZLOTO_ADMIN_EMAIL MUZLOTO_ADMIN_PASSWORD MUZLOTO_INTEGRATION_SECRET; do
+for var in POSTGRES_PASSWORD MUZLOTO_ADMIN_EMAIL MUZLOTO_ADMIN_PASSWORD MUZLOTO_INTEGRATION_SECRET MUZLOTO_JWT_KEY; do
   if [[ -z "${!var:-}" || "${!var}" == REPLACE_* ]]; then
     echo "Set $var in .env" >&2
     exit 1
@@ -20,3 +20,5 @@ export ConnectionStrings__Default="Host=localhost;Port=5432;Database=muzloto_dev
 export BootstrapAdmin__Email="$MUZLOTO_ADMIN_EMAIL"
 export BootstrapAdmin__Password="$MUZLOTO_ADMIN_PASSWORD"
 export Integration__Secret="$MUZLOTO_INTEGRATION_SECRET"
+
+export Jwt__Key="$MUZLOTO_JWT_KEY"

@@ -1,52 +1,34 @@
 # МузЛото — информационная система мероприятий
 
-**Этап 1: исходный код пилотного вертикального сценария, ещё без проверенной сборки.** До эксплуатации с реальными клиентами необходимы сборка, интеграционные тесты, аудит доступа и проверка FormDesigner.
+**Этап 2: ASP.NET Core 8, PostgreSQL, Razor Pages, JWT REST API v1/v2, AJAX, SignalR.**
 
-## Стек
+Разработка идёт по единому техническому заданию. Существующая клиентская форма FormDesigner **остаётся**; система принимает её заявки через отдельный адаптер (реальное сопоставление полей ещё не проверено).
 
-ASP.NET Core 8, Razor Pages, ASP.NET Core Identity, EF Core + PostgreSQL, SignalR Hub, CSS/JavaScript. Клиентская форма FormDesigner не заменяется.
+## Что реализовано в исходниках
 
-## Что реализовано в первом этапе
+- Cookie/Identity для сотрудников Admin, Manager, User; вход через Razor Pages.
+- Создание и управление сеансами, список ожидающих и подтверждённых заявок.
+- Подтверждение оплаты с SERIALIZABLE-транзакцией; неоплаченные заявки не занимают места.
+- Завершение игры удаляет неоплаченные заявки; подтверждённые сохраняются.
+- JWT `POST /api/auth/token`, REST CRUD сеансов `api/v1/sessions` и `api/v2/sessions`, Swagger в Development.
+- AJAX-формы подтверждения, отмены и завершения; клиент SignalR с группами сеансов и переподключением.
+- Unit-тесты и отдельный интеграционный тест на временном PostgreSQL; GitHub Actions для сборки, миграций и HTTP smoke.
 
-- Вход сотрудника и роли Admin, Manager, User.
-- Добавление и изменение сеансов игр; расчёт вместимости.
-- Список поступивших заявок, ручное подтверждение, отмена, завершение игры.
-- Удаление Pending после завершения, сохранение оплаченных записей.
-- Canonical JSON приём заявок с секретным заголовком и уникальным submission ID.
-- Статус Pending не резервирует места. Подтверждение проверяет доступные места в Serializable-транзакции.
-- Сводка выручки и оплаченных билетов; защищённый SignalR Hub.
+**Текущий код не проходил локальную компиляцию в среде подготовки** (нет .NET SDK и доступа к Docker). Перед продолжением нужна успешная проверка CI для второго этапа; инструкции — [docs/STAGE2.md](docs/STAGE2.md).
 
-**Важно:** SignalR-клиент, AJAX-действия, JWT REST API, версионирование, уведомления, импорт и полноценные отчёты — последующие этапы. См. [docs/STATUS.md](docs/STATUS.md).
-
-## Локальный запуск (Linux)
-
-Нужно установить **.NET 8 SDK**, Docker и Docker Compose. В каталоге проекта:
+## Локальный запуск
 
 ```bash
 cp .env.example .env
-# Откройте .env и замените ВСЕ значения REPLACE_...
+# Поменяйте все значения REPLACE_...
 docker compose up -d postgres
 bash scripts/init-db.sh
+bash scripts/install-client.sh
 bash scripts/dev.sh
 ```
 
-Откройте `http://localhost:5080/account/login` (или `/dashboard`, если вошли). Администратор создаётся из `MUZLOTO_ADMIN_EMAIL` / `MUZLOTO_ADMIN_PASSWORD`; секреты нельзя коммитить. Если локальный порт PostgreSQL 5432 занят, измените Docker Compose и ConnectionString в `scripts/common.sh`.
+Открыть `http://localhost:5080/account/login`. Swagger (в Development): `http://localhost:5080/swagger`.
 
-**Миграции**: поскольку среда подготовки не содержала SDK, первой командой нужно сгенерировать InitialCreate из актуальной EF Core модели. После этого **добавьте созданные `Data/Migrations/*.cs` в Git**, чтобы дальнейшее создание базы было воспроизводимо.
+Посмотреть [HTTP-примеры](requests/MuzLoto-API.http), [статус модулей](docs/STATUS.md) и [предположения по FormDesigner](docs/FORMDESIGNER.md).
 
-## Проверка
-
-```bash
-dotnet build src/MuzLoto.Web/MuzLoto.Web.csproj
-dotnet test tests/MuzLoto.Tests/MuzLoto.Tests.csproj
-```
-
-Для тестового входящего запроса см. [requests/MuzLoto.http](requests/MuzLoto.http), а для предпосылок FormDesigner — [docs/FORMDESIGNER.md](docs/FORMDESIGNER.md).
-
-## Политика данных
-
-Это **публичный учебный репозиторий**. Нельзя добавлять реальные заявки клиентов, телефоны, credentials, историю транзакций или production-экспорты. `.env`, `appsettings.Production.json` и локальные данные исключены из Git.
-
-## Дальнейшая работа
-
-В следующем цикле — JWT API v1/v2 со Swagger, AJAX-обновления и SignalR-клиент, адаптер реального payload FormDesigner, управление сотрудниками и тесты на PostgreSQL.
+После генерации initial migrations файлы `src/MuzLoto.Web/Data/Migrations/*.cs` нужно закоммитить. Для реальных данных необходимы тесты, проверка поставщика формы, HTTPS и аудит безопасности.

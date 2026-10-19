@@ -1,0 +1,54 @@
+@base = http://localhost:5080
+@token = REPLACE_WITH_TOKEN_FROM_API_AUTH
+@sessionId = 00000000-0000-0000-0000-000000000000
+@gameId = 00000000-0000-0000-0000-000000000000
+
+### JWT token, no cookie
+POST {{base}}/api/auth/token
+Content-Type: application/json
+
+{"email":"admin@example.test","password":"REPLACE_WITH_LOCAL_ADMIN_PASSWORD"}
+
+### v1 list
+GET {{base}}/api/v1/sessions
+Authorization: Bearer {{token}}
+
+### v2 list & search (different response structure)
+GET {{base}}/api/v2/sessions?page=1&pageSize=20&search=
+Authorization: Bearer {{token}}
+
+### v2 create (Admin only; first create a game in the Razor admin UI)
+POST {{base}}/api/v2/sessions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "gameId": "{{gameId}}",
+  "startsAt": "2026-11-12T19:00:00+03:00",
+  "location": { "name": "Пример площадки", "timeZone": "Europe/Moscow" },
+  "seats": { "total": 80 },
+  "ticketPrice": 1500,
+  "durationMinutes": 120,
+  "ageLimit": 12,
+  "salesOpen": true
+}
+
+### v2 get
+GET {{base}}/api/v2/sessions/{{sessionId}}
+Authorization: Bearer {{token}}
+
+### v1 replace (full v1 contract)
+PUT {{base}}/api/v1/sessions/{{sessionId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "gameId": "{{gameId}}", "startsAt": "2026-11-12T19:00:00+03:00",
+  "timeZoneId": "Europe/Moscow", "venue": "Пример площадки",
+  "capacity": 100, "ticketPrice": 1500,
+  "durationMinutes": 120, "ageLimit": 12, "salesOpen": true
+}
+
+### delete (only sessions without bookings)
+DELETE {{base}}/api/v2/sessions/{{sessionId}}
+Authorization: Bearer {{token}}
