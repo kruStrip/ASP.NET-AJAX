@@ -1,0 +1,21 @@
+@page "/bookings/pending"
+@model MuzLoto.Web.Pages.Bookings.PendingModel
+@{ ViewData["Title"] = "Нужно подтвердить"; }
+<div class="page-heading"><div><div class="eyebrow">Поступившие заявки</div><h1>Нужно подтвердить</h1>
+<p class="muted">Заявки не занимают места до подтверждения оплаты сотрудником.</p></div></div>
+<div class="card-list">
+@foreach (var b in Model.Bookings)
+{
+<article class="booking-card"><div>
+<span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM HH:mm") (@b.GameSession.TimeZoneId)</span>
+<h2>@b.TeamName</h2>
+<p>@b.CustomerName · @b.Quantity бил. · @((b.Quantity*b.TicketPriceSnapshot).ToString("N2")) ₽</p>
+<p><a href="tel:@b.Phone">@b.Phone</a> @if (!string.IsNullOrWhiteSpace(b.Telegram)) { <span>· Telegram: @b.Telegram</span> }</p>
+<span class="status pending">Ожидает подтверждения</span>
+</div><div class="button-stack">
+<form method="post" asp-page-handler="Confirm" data-confirm="Вы проверили получение оплаты? После подтверждения будут заняты места."><input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Подтвердить оплату</button></form>
+<form method="post" asp-page-handler="Cancel" data-confirm="Отменить эту заявку?"><input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button secondary">Отменить</button></form>
+</div></article>
+}
+@if (Model.Bookings.Count == 0) { <p class="muted">Неоплаченных заявок нет.</p> }
+</div>

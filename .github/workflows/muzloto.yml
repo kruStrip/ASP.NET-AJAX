@@ -1,0 +1,24 @@
+name: MuzLoto build and unit tests
+on:
+  push:
+    paths:
+      - '4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект/**'
+      - '.github/workflows/muzloto.yml'
+  pull_request:
+    paths:
+      - '4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект/**'
+      - '.github/workflows/muzloto.yml'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore and build
+        working-directory: 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект
+        run: dotnet build src/MuzLoto.Web/MuzLoto.Web.csproj -c Release
+      - name: Unit tests
+        working-directory: 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект
+        run: dotnet test tests/MuzLoto.Tests/MuzLoto.Tests.csproj -c Release

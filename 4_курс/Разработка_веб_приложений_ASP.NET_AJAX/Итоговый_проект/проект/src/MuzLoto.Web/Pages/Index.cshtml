@@ -1,0 +1,15 @@
+@page "/dashboard"
+@model MuzLoto.Web.Pages.IndexModel
+@{ ViewData["Title"] = "Панель управления"; }
+<div class="page-heading"><div><div class="eyebrow">Управление мероприятиями</div><h1>Главная</h1><p class="muted">Продажи и бронирования в одной системе</p></div></div>
+<div class="stats">
+    <div class="stat"><span>Активных игр</span><strong>@Model.Upcoming</strong></div>
+    <div class="stat"><span>Ожидают оплаты</span><strong>@Model.Pending</strong></div>
+    <div class="stat"><span>Продано билетов</span><strong>@Model.SoldTickets</strong></div>
+    <div class="stat"><span>Подтверждённая выручка</span><strong>@Model.Revenue.ToString("N2") ₽</strong></div>
+</div>
+<section class="panel"><h2>Быстрые действия</h2><div class="actions">
+<a class="button" asp-page="/Bookings/Pending">Открыть заявки</a>
+<a class="button secondary" asp-page="/Events/Index">Все мероприятия</a>
+<a class="button secondary" asp-page="/Reports/Index">Посмотреть отчёт</a>
+</div></section>

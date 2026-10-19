@@ -1,0 +1,14 @@
+@page "/events/create"
+@model MuzLoto.Web.Pages.Events.CreateModel
+@{ ViewData["Title"] = "Новая игра"; }
+<h1>Добавить игру</h1><section class="panel form-panel"><p class="muted">Укажите местное время и IANA-часовой пояс (например, Asia/Vladivostok). Хранение даты — в UTC.</p>
+<form method="post">
+<div asp-validation-summary="ModelOnly" class="error-text"></div>
+<label asp-for="Input.Title">Название</label><input asp-for="Input.Title" /><span asp-validation-for="Input.Title" class="error-text"></span>
+<label asp-for="Input.LocalStart">Дата и время игры</label><input asp-for="Input.LocalStart" asp-format="{0:yyyy-MM-ddTHH:mm}" type="datetime-local" /><span asp-validation-for="Input.LocalStart" class="error-text"></span>
+<label asp-for="Input.TimeZoneId">Часовой пояс (IANA)</label><input asp-for="Input.TimeZoneId" placeholder="Asia/Vladivostok" /><span asp-validation-for="Input.TimeZoneId" class="error-text"></span>
+<label asp-for="Input.Venue">Место проведения</label><input asp-for="Input.Venue" /><span asp-validation-for="Input.Venue" class="error-text"></span>
+<label asp-for="Input.TicketPrice">Цена билета (₽)</label><input asp-for="Input.TicketPrice" type="number" min="0" step="0.01" /><span asp-validation-for="Input.TicketPrice" class="error-text"></span>
+<label asp-for="Input.Capacity">Количество мест</label><input asp-for="Input.Capacity" type="number" min="1" /><span asp-validation-for="Input.Capacity" class="error-text"></span>
+<div class="actions"><button type="submit" class="button">Создать</button><a asp-page="/Events/Index" class="button secondary">Отмена</a></div>
+</form></section>

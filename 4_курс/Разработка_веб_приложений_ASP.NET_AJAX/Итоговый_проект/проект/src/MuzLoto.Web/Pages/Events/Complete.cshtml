@@ -1,0 +1,19 @@
+@page "/events/completed"
+@model MuzLoto.Web.Pages.Events.CompleteModel
+@{ ViewData["Title"] = "Завершение игр"; }
+<div class="page-heading"><div><div class="eyebrow">Рабочие действия</div><h1>Отметить, что игра прошла</h1>
+<p class="muted">Неподтверждённые заявки будут удалены. Оплаченные продажи сохранятся.</p></div></div>
+<div class="card-list">
+@foreach (var s in Model.Sessions)
+{
+<article class="booking-card"><div><h2>@s.Game.Title</h2><p class="muted">@ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId).ToString("dd.MM.yyyy HH:mm") (@s.TimeZoneId) — @s.Venue</p>
+@if (s.CompletedAt.HasValue) { <span class="status cancelled">Завершено</span> }</div>
+@if (!s.CompletedAt.HasValue)
+{
+<form method="post" data-confirm="Удалить все неоплаченные заявки этой игры и завершить мероприятие? Операция необратима."><input name="id" type="hidden" value="@s.Id" />
+<button class="button danger" type="submit">Игра прошла</button></form>
+}
+</article>
+}
+@if (Model.Sessions.Count == 0) { <p class="muted">Подходящих игр нет.</p> }
+</div>

@@ -1,0 +1,21 @@
+@url = http://localhost:5080
+@sessionId = 00000000-0000-0000-0000-000000000000
+@integrationKey = REPLACE_WITH_VALUE_FROM_ENV
+
+### Health
+GET {{url}}/health
+
+### Integration adapter: canonical JSON, NOT original FormDesigner field names
+POST {{url}}/api/integrations/formdesigner/submissions
+Content-Type: application/json
+X-Integration-Key: {{integrationKey}}
+
+{
+  "externalSubmissionId": "test-001",
+  "gameSessionId": "{{sessionId}}",
+  "teamName": "Команда Звук",
+  "customerName": "Тестовый клиент",
+  "phone": "+70000000000",
+  "telegram": "test_example",
+  "quantity": 2
+}
