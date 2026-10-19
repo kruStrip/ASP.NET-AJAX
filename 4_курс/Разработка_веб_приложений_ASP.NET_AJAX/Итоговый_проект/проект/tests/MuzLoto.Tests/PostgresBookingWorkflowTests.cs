@@ -135,6 +135,8 @@ public sealed class PostgresBookingWorkflowTests
 
         await workflow.ConfirmAsync(first.Id, user.Id);
         await workflow.CancelAsync(first.Id, user.Id);
+        Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == first.Id &&
+            x.Status == RefundStatus.Pending));
         Assert.Equal(0, await db.Bookings.Where(x =>
             x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed).CountAsync());
         // Another paid booking takes the released place; restoration must be rejected.
@@ -148,6 +150,10 @@ public sealed class PostgresBookingWorkflowTests
         Assert.Equal(BookingStatus.Confirmed,
             (await db.Bookings.AsNoTracking().SingleAsync(x => x.Id == first.Id)).Status);
         Assert.Equal(1, await db.Payments.CountAsync(x => x.BookingId == first.Id));
+        Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == first.Id &&
+            x.Status == RefundStatus.Cancelled));
+        Assert.Equal(0, await db.Refunds.CountAsync(x => x.Payment.BookingId == first.Id &&
+            x.Status == RefundStatus.Completed));
         Assert.Equal(2, await db.Payments.CountAsync(x => x.Booking.GameSessionId == session.Id));
 
         // Expired cancellations stay in the audit trail, not in the restore window.
@@ -158,4 +164,115 @@ public sealed class PostgresBookingWorkflowTests
             () => workflow.RestoreCancelledAsync(second.Id, user.Id));
         Assert.Equal(409, expired.StatusCode);
     }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task PaidCancellation_RequestsRefund_CompletedRefundReducesNet_AndBlocksRestore()
+    {
+        if (Environment.GetEnvironmentVariable("MUZLOTO_PG_TEST") != "1")
+            throw new InvalidOperationException("Integration tests require an isolated PostgreSQL database.");
+        var connection = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+            ?? throw new InvalidOperationException("ConnectionStrings__Default is missing.");
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection).Options;
+        using var services = new ServiceCollection().AddLogging().AddSignalR().Services.BuildServiceProvider();
+        var hub = services.GetRequiredService<IHubContext<BookingHub>>();
+        var logger = services.GetRequiredService<ILogger<BookingWorkflow>>();
+        var config = new ConfigurationBuilder().Build();
+        await using var db = new AppDbContext(options);
+        var user = new AppUser
+        {
+            UserName = "refund-" + Guid.NewGuid().ToString("N"),
+            Email = "refund-" + Guid.NewGuid().ToString("N") + "@invalid.test"
+        };
+        var game = new Game { Title = "Refund test" };
+        var session = new GameSession
+        {
+            Game = game, StartsAt = DateTimeOffset.UtcNow.AddDays(2),
+            TimeZoneId = "Etc/UTC", Venue = "Refund CI room",
+            TicketPrice = 800m, Capacity = 2
+        };
+        db.Users.Add(user);
+        db.GameSessions.Add(session);
+        await db.SaveChangesAsync();
+        var workflow = new BookingWorkflow(db, hub, logger, config);
+        var incoming = await workflow.ReceiveAsync(new IncomingBooking(
+            "refund-" + Guid.NewGuid().ToString("N"), session.Id,
+            "Клиент возврата", "Клиент возврата", "+70000000002", null, 2));
+        await workflow.ConfirmAsync(incoming.Id, user.Id);
+        await workflow.CancelAsync(incoming.Id, user.Id);
+
+        var pending = await db.Refunds.SingleAsync(x => x.Payment.BookingId == incoming.Id);
+        Assert.Equal(RefundStatus.Pending, pending.Status);
+        Assert.Equal(1600m, pending.Amount);
+        Assert.Equal(0, await db.Bookings.CountAsync(x => x.GameSessionId == session.Id &&
+            x.Status == BookingStatus.Confirmed));
+        Assert.Equal(1600m, await db.Payments.Where(x => x.BookingId == incoming.Id)
+            .SumAsync(x => x.Amount));
+        Assert.Equal(0m, await db.Refunds.Where(x => x.Payment.BookingId == incoming.Id &&
+            x.Status == RefundStatus.Completed).SumAsync(x => x.Amount));
+
+        await workflow.ConfirmRefundAsync(pending.Id, user.Id, "CI-test-transfer");
+        await workflow.ConfirmRefundAsync(pending.Id, user.Id, "CI-test-transfer");
+        Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == incoming.Id &&
+            x.Status == RefundStatus.Completed));
+        var gross = await db.Payments.Where(x => x.BookingId == incoming.Id)
+            .SumAsync(x => x.Amount);
+        var returned = await db.Refunds.Where(x => x.Payment.BookingId == incoming.Id &&
+            x.Status == RefundStatus.Completed).SumAsync(x => x.Amount);
+        Assert.Equal(0m, gross - returned);
+        var denied = await Assert.ThrowsAsync<BusinessException>(
+            () => workflow.RestoreCancelledAsync(incoming.Id, user.Id));
+        Assert.Equal(409, denied.StatusCode);
+        await db.Entry(pending).ReloadAsync();
+        Assert.Equal("CI-test-transfer", pending.TransferReference);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task RestoringBeforeRefund_RemovesRequest_AndPreventsCompletingIt()
+    {
+        if (Environment.GetEnvironmentVariable("MUZLOTO_PG_TEST") != "1")
+            throw new InvalidOperationException("Integration tests require an isolated PostgreSQL database.");
+        var connection = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+            ?? throw new InvalidOperationException("ConnectionStrings__Default is missing.");
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection).Options;
+        using var services = new ServiceCollection().AddLogging().AddSignalR().Services.BuildServiceProvider();
+        var hub = services.GetRequiredService<IHubContext<BookingHub>>();
+        var logger = services.GetRequiredService<ILogger<BookingWorkflow>>();
+        await using var db = new AppDbContext(options);
+        var user = new AppUser
+        {
+            UserName = "refund-restore-" + Guid.NewGuid().ToString("N"),
+            Email = "refund-restore-" + Guid.NewGuid().ToString("N") + "@invalid.test"
+        };
+        var session = new GameSession
+        {
+            Game = new Game { Title = "Cancel refund test" },
+            StartsAt = DateTimeOffset.UtcNow.AddDays(3), TimeZoneId = "Etc/UTC",
+            Venue = "CI testing", TicketPrice = 500m, Capacity = 3
+        };
+        db.Users.Add(user);
+        db.GameSessions.Add(session);
+        await db.SaveChangesAsync();
+        var workflow = new BookingWorkflow(db, hub, logger, new ConfigurationBuilder().Build());
+        var booking = await workflow.ReceiveAsync(new IncomingBooking(
+            "refund-restore-" + Guid.NewGuid().ToString("N"), session.Id,
+            "Команда", "Клиент", "+70000000003", null, 1));
+        await workflow.ConfirmAsync(booking.Id, user.Id);
+        await workflow.CancelAsync(booking.Id, user.Id);
+        var refund = await db.Refunds.SingleAsync(x => x.Payment.BookingId == booking.Id);
+        await workflow.RestoreCancelledAsync(booking.Id, user.Id);
+        Assert.Equal(RefundStatus.Cancelled, refund.Status);
+        var denied = await Assert.ThrowsAsync<BusinessException>(
+            () => workflow.ConfirmRefundAsync(refund.Id, user.Id));
+        Assert.Equal(409, denied.StatusCode);
+        Assert.Equal(1, await db.Payments.CountAsync(x => x.BookingId == booking.Id));
+        // A later cancellation creates a new request while retaining the old cancelled one.
+        await workflow.CancelAsync(booking.Id, user.Id);
+        Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == booking.Id &&
+            x.Status == RefundStatus.Pending));
+        Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == booking.Id &&
+            x.Status == RefundStatus.Cancelled));
+    }
+
 }

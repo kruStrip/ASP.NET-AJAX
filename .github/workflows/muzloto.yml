@@ -56,6 +56,10 @@ jobs:
             dotnet tool run dotnet-ef migrations add InitialCreate \
               --project . --startup-project . --output-dir Data/Migrations
           fi
+          if ! find Data/Migrations -maxdepth 1 -name '*_RefundWorkflow.cs' -print -quit 2>/dev/null | grep -q .; then
+            dotnet tool run dotnet-ef migrations add RefundWorkflow \
+              --project . --startup-project . --output-dir Data/Migrations
+          fi
           dotnet tool run dotnet-ef database update --project . --startup-project .
       - name: PostgreSQL integration tests (isolated CI database)
         env:

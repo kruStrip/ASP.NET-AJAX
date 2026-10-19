@@ -82,7 +82,8 @@
     }
   }
   for (const eventName of ['BookingCreated', 'BookingConfirmed', 'BookingUpdated',
-    'TicketsAvailabilityChanged', 'GameCompleted', 'GameReopened']) {
+    'TicketsAvailabilityChanged', 'GameCompleted', 'GameReopened',
+    'RefundRequested', 'RefundCancelled', 'RefundCompleted']) {
     connection.on(eventName, () => { void refreshVisibleList(); });
   }
   connection.onreconnected(() => { void joinGroups(); void refreshVisibleList(); });

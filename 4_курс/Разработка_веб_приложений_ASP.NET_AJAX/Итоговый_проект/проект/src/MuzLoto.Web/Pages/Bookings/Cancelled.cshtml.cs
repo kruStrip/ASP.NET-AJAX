@@ -18,7 +18,9 @@ public sealed class CancelledModel(AppDbContext db, StaffAccess access, BookingW
         var deadline = DateTimeOffset.UtcNow.AddHours(-1);
         var query = db.Bookings.Include(x => x.GameSession).ThenInclude(x => x.Game)
             .AsNoTracking().Where(x => x.Status == BookingStatus.Cancelled &&
-                x.CancelledAt >= deadline && x.GameSession.CompletedAt == null && x.GameSession.SalesOpen);
+                x.CancelledAt >= deadline && x.GameSession.CompletedAt == null && x.GameSession.SalesOpen &&
+                // Once funds are returned, restoration requires a new booking and payment.
+                !db.Refunds.Any(r => r.Payment.BookingId == x.Id && r.Status == RefundStatus.Completed));
         if (!User.IsInRole("Admin"))
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);

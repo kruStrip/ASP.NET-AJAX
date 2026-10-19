@@ -1,0 +1,48 @@
+@page "/refunds"
+@model MuzLoto.Web.Pages.Refunds.IndexModel
+@{ ViewData["Title"] = "Возвраты денег"; }
+<div class="page-heading"><div>
+<div class="eyebrow">Финансовые операции</div><h1>Возвраты денег</h1>
+<p class="muted">Отмена оплаченного заказа освобождает билеты и создаёт запрос на возврат.
+Нажимайте «Деньги возвращены» только после реального перечисления клиенту. Система не переводит деньги автоматически.</p>
+</div></div>
+<div data-live-list>
+<section class="panel"><h2>Ожидают возврата (@Model.Pending.Count)</h2></section>
+<div class="card-list">
+@foreach (var refund in Model.Pending)
+{
+  var booking = refund.Payment.Booking;
+  <article class="booking-card" data-session-id="@booking.GameSessionId">
+    <div>
+      <span class="eyebrow">@booking.GameSession.Game.Title — @ScheduleTime.ToLocal(booking.GameSession.StartsAt, booking.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</span>
+      <h2>@booking.TeamName · @refund.Amount.ToString("N2") ₽</h2>
+      <p>@booking.CustomerName · @booking.Quantity бил. · <a href="tel:@booking.Phone">@booking.Phone</a></p>
+      <span class="status pending">Деньги ещё не возвращены</span>
+    </div>
+    <form method="post" asp-page-handler="Complete" data-ajax-action="refund-complete"
+      data-confirm="Подтвердить возврат? Отметить перечисление можно только после фактического перевода денег клиенту.">
+      <input type="hidden" name="id" value="@refund.Id" />
+      <label class="check"><input type="checkbox" name="confirmTransfer" value="true" required /> Я действительно перечислил(а) деньги</label>
+      <input type="text" name="transferReference" maxlength="200" placeholder="ID перевода / примечание (необязательно)" />
+      <button type="submit" class="button">Деньги возвращены</button>
+    </form>
+  </article>
+}
+@if (Model.Pending.Count == 0) { <p class="muted">Нет возвратов, ожидающих перечисления.</p> }
+</div>
+<section class="panel"><h2>Выполненные возвраты</h2></section>
+<div class="card-list">
+@foreach (var refund in Model.Completed)
+{
+  var booking = refund.Payment.Booking;
+  <article class="booking-card" data-session-id="@booking.GameSessionId">
+    <div><h2>@booking.TeamName — @refund.Amount.ToString("N2") ₽</h2>
+      <p>@booking.CustomerName · @booking.GameSession.Game.Title</p>
+      <p class="muted">Возврат подтверждён: @(refund.CompletedAt?.ToString("dd.MM.yyyy HH:mm") ?? "—") (UTC)</p>
+      @if (!string.IsNullOrWhiteSpace(refund.TransferReference)) { <p class="muted">Примечание: @refund.TransferReference</p> }
+    </div><span class="status confirmed">Деньги возвращены</span>
+  </article>
+}
+@if (Model.Completed.Count == 0) { <p class="muted">Подтверждённых возвратов пока нет.</p> }
+</div>
+</div>

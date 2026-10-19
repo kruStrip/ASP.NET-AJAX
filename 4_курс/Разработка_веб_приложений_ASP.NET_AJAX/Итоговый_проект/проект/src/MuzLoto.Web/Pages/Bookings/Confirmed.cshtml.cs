@@ -41,7 +41,7 @@ public class ConfirmedModel(AppDbContext db, StaffAccess access, BookingWorkflow
         try
         {
             await workflow.CancelAsync(id, User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct);
-            return AjaxResult.Success(this, "Покупка отменена, билеты освобождены. Возврат денег оформляется отдельно.");
+            return AjaxResult.Success(this, "Покупка отменена, места освобождены. Заявка на возврат денег создана — подтвердите перевод в разделе «Возвраты».");
         }
         catch (BusinessException ex) { return AjaxResult.Failure(this, ex); }
     }

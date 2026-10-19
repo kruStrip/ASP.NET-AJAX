@@ -34,6 +34,14 @@ public class IndexModel(AppDbContext db) : PageModel
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             payments = payments.Where(x => x.Booking.GameSession.Staff.Any(a => a.UserId == userId));
         }
-        Revenue = await payments.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
+        var gross = await payments.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
+        var refunds = db.Refunds.Where(x => x.Status == RefundStatus.Completed);
+        if (!User.IsInRole("Admin"))
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            refunds = refunds.Where(x => x.Payment.Booking.GameSession.Staff.Any(a => a.UserId == userId));
+        }
+        var returned = await refunds.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
+        Revenue = gross - returned;
     }
 }

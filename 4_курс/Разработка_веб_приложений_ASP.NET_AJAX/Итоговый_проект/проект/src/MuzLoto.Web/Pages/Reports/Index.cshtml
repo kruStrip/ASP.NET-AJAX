@@ -3,10 +3,14 @@
 @{ ViewData["Title"] = "Отчёт"; }
 <div class="page-heading"><div><div class="eyebrow">Аналитика продаж</div><h1>Отчёт</h1></div></div>
 <div class="stats">
-<div class="stat"><span>Продано билетов</span><strong>@Model.Sold</strong></div>
-<div class="stat"><span>Подтверждено заказов</span><strong>@Model.Orders</strong></div>
-<div class="stat"><span>Зафиксировано оплат</span><strong>@Model.PaymentsCount</strong></div>
-<div class="stat"><span>Поступления по подтверждённым оплатам</span><strong>@Model.Revenue.ToString("N2") ₽</strong></div>
-<div class="stat"><span>Средняя подтверждённая оплата</span><strong>@Model.AverageCheck.ToString("N2") ₽</strong></div>
+<div class="stat"><span>Действующих билетов</span><strong>@Model.Sold</strong></div>
+<div class="stat"><span>Действующих заказов</span><strong>@Model.Orders</strong></div>
+<div class="stat"><span>Получено оплат</span><strong>@Model.PaymentsCount</strong></div>
+<div class="stat"><span>Получено денег (всего)</span><strong>@Model.GrossRevenue.ToString("N2") ₽</strong></div>
+<div class="stat"><span>Возвращено клиентам</span><strong>@Model.RefundedAmount.ToString("N2") ₽</strong></div>
+<div class="stat"><span>Чистые поступления</span><strong>@Model.NetRevenue.ToString("N2") ₽</strong></div>
+<div class="stat"><span>Ожидают возврата</span><strong>@Model.PendingRefundsCount</strong><p class="muted">@Model.PendingRefundAmount.ToString("N2") ₽</p></div>
+<div class="stat"><span>Средняя сумма оплаты</span><strong>@Model.AverageCheck.ToString("N2") ₽</strong></div>
 </div>
-<p class="muted">Количество действующих билетов и заказов учитывает только текущие подтверждённые бронирования. Сумма поступлений считается по зафиксированным платежам, включая отменённые заказы без подтверждённого возврата. Автоматических возвратов денег нет.</p>
+<p class="muted">Сумма поступлений уменьшается <strong>только после подтверждения фактического денежного возврата</strong> в разделе
+<a asp-page="/Refunds/Index">«Возвраты»</a>. Отмена бронирования сразу освобождает билеты, но не означает, что перевод выполнен.</p>

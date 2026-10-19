@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<GameImage> GameImages => Set<GameImage>();
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<Refund> Refunds => Set<Refund>();
     public DbSet<BookingStatusHistory> BookingStatusHistory => Set<BookingStatusHistory>();
     public DbSet<EventStaffAssignment> EventStaffAssignments => Set<EventStaffAssignment>();
     public DbSet<ExternalSubmission> ExternalSubmissions => Set<ExternalSubmission>();
@@ -48,6 +49,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         {
             e.Property(x => x.Amount).HasPrecision(12, 2);
             e.HasOne(x => x.ConfirmedByUser).WithMany().HasForeignKey(x => x.ConfirmedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<Refund>(e =>
+        {
+            e.HasOne(x => x.Payment).WithMany(p => p.Refunds)
+                .HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Amount).HasPrecision(12, 2);
+            e.Property(x => x.TransferReference).HasMaxLength(200);
+            e.HasIndex(x => x.Status);
+            // At most one open or completed refund per payment; cancelled requests
+            // remain in the audit trail and don't prevent a later new request.
+            e.HasIndex(x => x.PaymentId).IsUnique()
+                .HasFilter("\"Status\" IN (0, 1)");
         });
         b.Entity<BookingStatusHistory>(e =>
         {

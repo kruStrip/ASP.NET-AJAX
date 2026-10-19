@@ -9,7 +9,7 @@
 <h2>@b.TeamName</h2><p>@b.CustomerName · @b.Quantity бил. · @((b.Quantity*b.TicketPriceSnapshot).ToString("N2")) ₽</p>
 <p><a href="tel:@b.Phone">@b.Phone</a> @if (!string.IsNullOrWhiteSpace(b.Telegram)) { <span>· Telegram: @b.Telegram</span> }</p>
 <span class="status confirmed">Оплата подтверждена</span></div>
-<form method="post" asp-page-handler="Cancel" data-ajax-action="booking-cancel" data-confirm="Отменить подтверждённую покупку? Места вернутся в продажу, автоматического возврата денег нет.">
+<form method="post" asp-page-handler="Cancel" data-ajax-action="booking-cancel" data-confirm="Отменить подтверждённую покупку? Билеты освободятся и будет создан запрос на полный возврат денег. После фактического перевода подтвердите возврат в разделе «Возвраты».">
 <input type="hidden" name="id" value="@b.Id" /><button class="button secondary" type="submit">Отменить</button></form></article>
 }
 @if (Model.Bookings.Count == 0) { <p class="muted">Подтверждённых покупок активных игр нет.</p> }

@@ -83,6 +83,26 @@ public class Payment
     public string? ConfirmedByUserId { get; set; }
     public AppUser? ConfirmedByUser { get; set; }
     public DateTimeOffset ConfirmedAt { get; set; } = DateTimeOffset.UtcNow;
+    public ICollection<Refund> Refunds { get; set; } = new List<Refund>();
+}
+
+/// <summary>Only Completed refunds represent money actually returned to the customer.</summary>
+public enum RefundStatus { Pending, Completed, Cancelled }
+
+public class Refund
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PaymentId { get; set; }
+    public Payment Payment { get; set; } = null!;
+    public decimal Amount { get; set; }
+    public RefundStatus Status { get; set; } = RefundStatus.Pending;
+    public DateTimeOffset RequestedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? RequestedByUserId { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string? CompletedByUserId { get; set; }
+    public DateTimeOffset? CancelledAt { get; set; }
+    public string? CancelledByUserId { get; set; }
+    public string? TransferReference { get; set; }
 }
 
 public class BookingStatusHistory

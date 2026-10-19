@@ -11,19 +11,28 @@ public class IndexModel(AppDbContext db) : PageModel
 {
     public int Sold { get; private set; }
     public int Orders { get; private set; }
-    public decimal Revenue { get; private set; }
     public int PaymentsCount { get; private set; }
-    public decimal AverageCheck => PaymentsCount == 0 ? 0 : Revenue / PaymentsCount;
+    public int RefundsCount { get; private set; }
+    public int PendingRefundsCount { get; private set; }
+    public decimal GrossRevenue { get; private set; }
+    public decimal RefundedAmount { get; private set; }
+    public decimal PendingRefundAmount { get; private set; }
+    public decimal NetRevenue => GrossRevenue - RefundedAmount;
+    public decimal AverageCheck => PaymentsCount == 0 ? 0 : GrossRevenue / PaymentsCount;
+
     public async Task OnGetAsync(CancellationToken ct)
     {
-        // Operational sales only. Payment records remain preserved even for cancelled bookings.
-        var q = db.Bookings.Where(x => x.Status == BookingStatus.Confirmed);
-        Orders = await q.CountAsync(ct);
-        Sold = await q.SumAsync(x => (int?)x.Quantity, ct) ?? 0;
-        // A cancellation releases seats, but does not automatically refund money.
-        // Financial reporting therefore uses recorded payments rather than booking status.
+        var active = db.Bookings.Where(x => x.Status == BookingStatus.Confirmed);
+        Orders = await active.CountAsync(ct);
+        Sold = await active.SumAsync(x => (int?)x.Quantity, ct) ?? 0;
         var payments = db.Payments.Where(x => x.Status == PaymentStatus.Confirmed);
         PaymentsCount = await payments.CountAsync(ct);
-        Revenue = await payments.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
+        GrossRevenue = await payments.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
+        var completed = db.Refunds.Where(x => x.Status == RefundStatus.Completed);
+        RefundsCount = await completed.CountAsync(ct);
+        RefundedAmount = await completed.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
+        var pending = db.Refunds.Where(x => x.Status == RefundStatus.Pending);
+        PendingRefundsCount = await pending.CountAsync(ct);
+        PendingRefundAmount = await pending.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
     }
 }

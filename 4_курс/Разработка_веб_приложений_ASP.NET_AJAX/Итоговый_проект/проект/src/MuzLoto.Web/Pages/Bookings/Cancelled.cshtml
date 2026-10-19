@@ -3,7 +3,7 @@
 @{ ViewData["Title"] = "Восстановление заявок"; }
 <div class="page-heading"><div><div class="eyebrow">Доступно в течение часа после отмены</div>
 <h1>Отменённые заявки</h1>
-<p class="muted">При восстановлении оплаченного заказа проверяется наличие мест. Дополнительный платёж не создаётся. Денежные возвраты осуществляются отдельно.</p>
+<p class="muted">Восстановить оплаченный заказ можно до фактического возврата денег: ожидание возврата отменяется, повторный платёж не создаётся. После подтверждённого возврата восстановление недоступно.</p>
 </div></div>
 <div class="card-list" data-live-list>
 @foreach (var b in Model.Bookings)
@@ -14,7 +14,7 @@
 <p>@b.CustomerName · @b.Quantity бил. · @((b.Quantity * b.TicketPriceSnapshot).ToString("N2")) ₽</p>
 <span class="status cancelled">Отменена @(b.CancelledAt.HasValue ? ScheduleTime.ToLocal(b.CancelledAt.Value, b.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm") : "—")</span>
 </div><div class="button-stack">
-<form method="post" asp-page-handler="Restore" data-ajax-action="booking-restore" data-confirm="Восстановить заявку? Для оплаченной заявки места будут заняты повторно, новый платёж не создаётся.">
+<form method="post" asp-page-handler="Restore" data-ajax-action="booking-restore" data-confirm="Восстановить заявку? Для оплаченной заявки места будут заняты повторно, ожидающий возврат будет отменён, новый платёж не создаётся.">
 <input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Восстановить</button>
 </form></div></article>
 }
