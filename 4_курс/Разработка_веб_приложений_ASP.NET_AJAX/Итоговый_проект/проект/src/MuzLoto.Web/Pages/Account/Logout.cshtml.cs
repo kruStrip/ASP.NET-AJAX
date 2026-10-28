@@ -7,10 +7,10 @@ namespace MuzLoto.Web.Pages.Account;
 
 public class LogoutModel(SignInManager<AppUser> signInManager) : PageModel
 {
-    public IActionResult OnGet() => RedirectToPage("/Index");
+    public IActionResult OnGet() => RedirectToPage("/Home");
     public async Task<IActionResult> OnPostAsync()
     {
         await signInManager.SignOutAsync();
-        return RedirectToPage("/Account/Login");
+        return RedirectToPage("/Home");
     }
 }

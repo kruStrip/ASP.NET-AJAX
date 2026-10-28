@@ -1,0 +1,27 @@
+@page "/"
+@model MuzLoto.Web.Pages.HomeModel
+@{ ViewData["Title"] = "Главная"; }
+<section class="panel hero">
+    <div class="eyebrow">Музыкальное лото</div>
+    <h1>МузЛото</h1>
+    <p class="muted">Игры, бронирование билетов и подтверждение оплаты в одной системе.</p>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <p>Здравствуйте, <strong>@Model.DisplayName</strong>!</p>
+        <div class="actions">
+            @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+            {
+                <a class="button" asp-page="/Index">Панель управления</a>
+            }
+            <a class="button secondary" asp-page="/Bookings/Mine">Мои заявки</a>
+            <form method="post" asp-page="/Account/Logout"><button type="submit" class="button secondary">Выйти</button></form>
+        </div>
+    }
+    else
+    {
+        <div class="actions">
+            <a class="button" asp-page="/Account/Login">Войти</a>
+            <a class="button secondary" asp-page="/Account/Register">Зарегистрироваться</a>
+        </div>
+    }
+</section>

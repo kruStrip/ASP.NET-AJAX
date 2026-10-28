@@ -1,0 +1,14 @@
+@page "/account/register"
+@model MuzLoto.Web.Pages.Account.RegisterModel
+@{ ViewData["Title"] = "Регистрация"; }
+<section class="login panel"><div class="eyebrow">Новый пользователь</div><h1>Регистрация</h1>
+<form method="post">
+<div asp-validation-summary="ModelOnly" class="error-text"></div>
+<label asp-for="Input.FullName">Имя</label><input asp-for="Input.FullName" autocomplete="name" /><span asp-validation-for="Input.FullName" class="error-text"></span>
+<label asp-for="Input.Email">E-mail</label><input asp-for="Input.Email" type="email" autocomplete="email" /><span asp-validation-for="Input.Email" class="error-text"></span>
+<label asp-for="Input.Password">Пароль (от 6 символов, минимум одна цифра)</label><input asp-for="Input.Password" type="password" autocomplete="new-password" /><span asp-validation-for="Input.Password" class="error-text"></span>
+<label asp-for="Input.ConfirmPassword">Повторите пароль</label><input asp-for="Input.ConfirmPassword" type="password" autocomplete="new-password" /><span asp-validation-for="Input.ConfirmPassword" class="error-text"></span>
+<button type="submit" class="button">Зарегистрироваться</button>
+</form>
+<p class="muted">Уже есть аккаунт? <a asp-page="/Account/Login">Войти</a></p>
+</section>

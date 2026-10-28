@@ -6,6 +6,7 @@ public class AppUser : IdentityUser
 {
     public string? FullName { get; set; }
     public ICollection<EventStaffAssignment> EventAssignments { get; set; } = new List<EventStaffAssignment>();
+    public ICollection<Booking> OwnedBookings { get; set; } = new List<Booking>();
 }
 
 public class Game
@@ -57,6 +58,9 @@ public class Booking
     public string? LegacyId { get; set; }
     public Guid GameSessionId { get; set; }
     public GameSession GameSession { get; set; } = null!;
+    /// <summary>Registered account that created the booking; null for anonymous/external submissions.</summary>
+    public string? OwnerUserId { get; set; }
+    public AppUser? Owner { get; set; }
     public string TeamName { get; set; } = string.Empty;
     public string CustomerName { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;

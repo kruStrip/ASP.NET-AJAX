@@ -98,7 +98,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Name = "Authorization", Type = SecuritySchemeType.Http,
         Scheme = "bearer", BearerFormat = "JWT", In = ParameterLocation.Header,
-        Description = "JWT access token from POST /api/auth/token"
+        Description = "JWT access token from POST /api/auth/login"
     });
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
@@ -111,7 +111,9 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AuthorizeFolder("/");
+    options.Conventions.AllowAnonymousToPage("/Home");
     options.Conventions.AllowAnonymousToPage("/Account/Login");
+    options.Conventions.AllowAnonymousToPage("/Account/Register");
     options.Conventions.AllowAnonymousToPage("/Account/Denied");
 });
 builder.Services.AddControllers();
@@ -151,7 +153,6 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
-app.MapGet("/", () => Results.Redirect("/dashboard")).AllowAnonymous();
 app.MapRazorPages();
 app.MapControllers();
 app.MapHub<BookingHub>("/hubs/bookings");
@@ -165,6 +166,6 @@ using (var scope = app.Services.CreateScope())
         throw new InvalidOperationException("No EF Core migrations found. Run scripts/init-db.sh first.");
     await db.Database.MigrateAsync();
 }
-await IdentitySeeder.SeedAsync(app.Services, app.Configuration);
+await IdentitySeeder.SeedAsync(app.Services, app.Configuration, app.Environment);
 app.Run();
 public partial class Program;

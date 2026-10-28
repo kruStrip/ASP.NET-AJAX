@@ -31,6 +31,6 @@ public sealed class ChangePasswordModel(UserManager<AppUser> users, SignInManage
         }
         await signIn.RefreshSignInAsync(user);
         TempData["Notice"] = "Пароль изменён. Ранее выданные JWT-токены недействительны.";
-        return RedirectToPage("/Index");
+        return RedirectToPage("/Home");
     }
 }

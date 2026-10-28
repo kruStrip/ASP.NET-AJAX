@@ -4,7 +4,7 @@
 
 ## Функциональность
 
-- `POST /api/auth/token`: выдача JWT через `SignInManager.CheckPasswordSignInAsync`, только сотрудникам Admin/Manager; cookie для Razor Pages остаются отдельными.
+- `POST /api/auth/token` (с этапа 6a основной адрес — `/api/auth/login`): выдача JWT через `SignInManager.CheckPasswordSignInAsync`, только сотрудникам Admin/Manager; cookie для Razor Pages остаются отдельными.
 - CRUD `api/v1/sessions` и `api/v2/sessions`: отдельные DTO. V1 — `capacity`, `reserved`, `venue`; V2 — объекты `location`, `seats` на входе и `availability`/`status` на выходе; поиск/постраничность.
 - Доступ: Admin создаёт, изменяет, удаляет; Manager читает только назначенные ему сеансы. Удаление при наличии заявок запрещено.
 - Обновления через AJAX на страницах: подтверждение, отмена, завершение сеанса. Прогрессивные POST-формы с обычной подачей при отключённом JavaScript, antiforgery и обработка 401/403/409.

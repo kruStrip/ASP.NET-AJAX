@@ -1,13 +1,23 @@
 @base = http://localhost:5080
-@token = REPLACE_WITH_TOKEN_FROM_API_AUTH
+@token = {{login.response.body.accessToken}}
 @sessionId = 00000000-0000-0000-0000-000000000000
 @gameId = 00000000-0000-0000-0000-000000000000
 
-### JWT token, no cookie
-POST {{base}}/api/auth/token
+### JWT login (Development admin from appsettings.Development.json)
+# @name login
+POST {{base}}/api/auth/login
 Content-Type: application/json
 
-{"email":"admin@example.test","password":"REPLACE_WITH_LOCAL_ADMIN_PASSWORD"}
+{"email":"admin@muzloto.local","password":"Admin2026!"}
+
+### Without token -> 401
+GET {{base}}/api/v1/sessions
+
+### Registered User token -> 403 on staff API (register at /account/register first)
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{"email":"REPLACE_WITH_REGISTERED_USER_EMAIL","password":"REPLACE_WITH_PASSWORD"}
 
 ### v1 list
 GET {{base}}/api/v1/sessions

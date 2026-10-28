@@ -8,7 +8,7 @@
 </head>
 <body>
 <header class="topbar">
-    <a class="brand" asp-page="@(User.IsInRole("User") ? "/Account/ChangePassword" : "/Index")">МузЛото<span class="brand-point">.</span></a>
+    <a class="brand" asp-page="/Home">МузЛото<span class="brand-point">.</span></a>
     <nav class="nav" aria-label="Основная навигация">
         @if (User.Identity?.IsAuthenticated == true)
         {
@@ -27,12 +27,21 @@
                     <a asp-page="/Staff/Index">Сотрудники</a>
                 }
             }
+            <a asp-page="/Bookings/Mine">Мои заявки</a>
             <a asp-page="/Account/ChangePassword">Пароль</a>
+        }
+        else
+        {
+            <a asp-page="/Account/Login">Войти</a>
+            <a asp-page="/Account/Register">Регистрация</a>
         }
     </nav>
     @if (User.Identity?.IsAuthenticated == true)
     {
-        <form method="post" asp-page="/Account/Logout"><button type="submit" class="small-button">Выйти</button></form>
+        <div class="user-box">
+            <span class="user-name" title="Вы вошли как">@User.Identity.Name</span>
+            <form method="post" asp-page="/Account/Logout"><button type="submit" class="small-button">Выйти</button></form>
+        </div>
     }
 </header>
 <main class="content">
@@ -41,6 +50,10 @@
     @if (TempData["Error"] is string error) { <div class="alert error">@error</div> }
     @RenderBody()
 </main>
+<footer class="footer">
+    <span>© @DateTime.Now.Year МузЛото</span>
+    <span class="muted">Система мероприятий и продажи билетов</span>
+</footer>
 @if (User.Identity?.IsAuthenticated == true)
 {
     @if (User.IsInRole("Admin") || User.IsInRole("Manager"))

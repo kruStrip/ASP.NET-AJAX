@@ -37,6 +37,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         {
             e.HasOne(x => x.GameSession).WithMany(s => s.Bookings).HasForeignKey(x => x.GameSessionId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Payment).WithOne(p => p.Booking).HasForeignKey<Payment>(p => p.BookingId).OnDelete(DeleteBehavior.Restrict);
+            // Deleting an account must not remove paid history: the booking just loses its owner.
+            e.HasOne(x => x.Owner).WithMany(u => u.OwnedBookings).HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => x.OwnerUserId);
             e.Property(x => x.TeamName).HasMaxLength(150).IsRequired();
             e.Property(x => x.CustomerName).HasMaxLength(150).IsRequired();
             e.Property(x => x.Phone).HasMaxLength(40).IsRequired();

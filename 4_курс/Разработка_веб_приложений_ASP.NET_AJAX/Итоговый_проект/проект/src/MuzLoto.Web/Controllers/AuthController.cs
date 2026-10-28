@@ -16,18 +16,21 @@ public sealed class AuthController(
         [Required, EmailAddress] string Email,
         [Required] string Password);
 
+    /// <summary>Проверяет e-mail и пароль и выдаёт JWT (claims: id, e-mail, роли; срок — 30 минут).</summary>
+    /// <remarks>Доступен всем ролям. Права на конкретные данные проверяют сами эндпоинты.
+    /// <c>/api/auth/token</c> — устаревший адрес, оставлен для совместимости.</remarks>
     [AllowAnonymous]
+    [HttpPost("login")]
     [HttpPost("token")]
     [ProducesResponseType(typeof(TokenResponse), StatusCodes.Status200OK)]
-    public async Task<ActionResult<TokenResponse>> Token(LoginRequest request)
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<TokenResponse>> Login(LoginRequest request)
     {
         var user = await users.FindByEmailAsync(request.Email);
         if (user is null) return Unauthorized(new ProblemDetails { Status = 401, Title = "Неверные учётные данные" });
         // This validates the password, lockout and account state without setting a cookie.
         var result = await signIn.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
         if (!result.Succeeded) return Unauthorized(new ProblemDetails { Status = 401, Title = "Неверные учётные данные или вход заблокирован" });
-        if (!await users.IsInRoleAsync(user, "Admin") && !await users.IsInRoleAsync(user, "Manager"))
-            return Forbid();
         var (accessToken, expiresAt) = await tokens.IssueAsync(user);
         return Ok(new TokenResponse(accessToken, "Bearer", expiresAt));
     }

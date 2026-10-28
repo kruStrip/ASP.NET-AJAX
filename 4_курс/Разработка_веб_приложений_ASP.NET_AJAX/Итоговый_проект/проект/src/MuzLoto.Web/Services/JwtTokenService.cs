@@ -28,6 +28,7 @@ public sealed class JwtTokenService(IConfiguration config, UserManager<AppUser> 
         {
             new(ClaimTypes.NameIdentifier, user.Id),
             new(ClaimTypes.Name, user.UserName ?? user.Id),
+            new(ClaimTypes.Email, user.Email ?? string.Empty),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
             new("muzloto_security_stamp", await users.GetSecurityStampAsync(user))
         };

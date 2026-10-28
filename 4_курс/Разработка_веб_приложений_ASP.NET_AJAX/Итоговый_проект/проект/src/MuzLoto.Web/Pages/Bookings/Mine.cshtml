@@ -1,0 +1,17 @@
+@page "/bookings/mine"
+@model MuzLoto.Web.Pages.Bookings.MineModel
+@{ ViewData["Title"] = "Мои заявки"; }
+<div class="page-heading"><div><div class="eyebrow">Личный раздел</div><h1>Мои заявки</h1>
+<p class="muted">Здесь видны только заявки, оформленные под вашей учётной записью.</p></div></div>
+<div class="card-list">
+@foreach (var b in Model.Bookings)
+{
+<article class="booking-card"><div>
+<span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm") (@b.GameSession.TimeZoneId)</span>
+<h2>@b.TeamName</h2>
+<p>@b.Quantity бил. · @((b.Quantity * b.TicketPriceSnapshot).ToString("N2")) ₽ · @b.GameSession.Venue</p>
+<span class="status @MineModel.StatusClass(b.Status)">@MineModel.StatusText(b.Status)</span>
+</div></article>
+}
+@if (Model.Bookings.Count == 0) { <p class="muted">Заявок пока нет.</p> }
+</div>

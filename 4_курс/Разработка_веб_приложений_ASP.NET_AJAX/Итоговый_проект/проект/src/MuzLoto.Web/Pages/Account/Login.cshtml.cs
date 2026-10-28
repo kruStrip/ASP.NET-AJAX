@@ -20,11 +20,11 @@ public class LoginModel(SignInManager<AppUser> signInManager, UserManager<AppUse
         var result = await signInManager.PasswordSignInAsync(Input.Email, Input.Password, false, true);
         if (result.Succeeded)
         {
+            if (Url.IsLocalUrl(returnUrl)) return LocalRedirect(returnUrl!);
             var account = await users.FindByEmailAsync(Input.Email);
-            if (account is not null && !await users.IsInRoleAsync(account, "Admin") &&
-                !await users.IsInRoleAsync(account, "Manager"))
-                return RedirectToPage("/Account/ChangePassword");
-            return LocalRedirect(Url.IsLocalUrl(returnUrl) ? returnUrl! : Url.Page("/Index")!);
+            var isStaff = account is not null && (await users.IsInRoleAsync(account, "Admin") ||
+                await users.IsInRoleAsync(account, "Manager"));
+            return RedirectToPage(isStaff ? "/Index" : "/Home");
         }
         ModelState.AddModelError(string.Empty,
             result.IsLockedOut ? "Вход заблокирован на 15 минут." : "Неверный e-mail или пароль.");
