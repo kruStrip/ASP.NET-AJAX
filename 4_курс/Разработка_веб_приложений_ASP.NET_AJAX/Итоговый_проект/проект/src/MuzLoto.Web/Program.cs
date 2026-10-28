@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Microsoft.EntityFrameworkCore;
@@ -48,6 +49,7 @@ builder.Services.ConfigureApplicationCookie(o =>
         return Task.CompletedTask;
     };
 });
+builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.Zero);
 // Identity's cookie remains the default for Razor Pages. API controllers explicitly use JWT.
 var jwtKey = JwtTokenService.RequireSigningKey(builder.Configuration);
 builder.Services.AddAuthentication().AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
@@ -65,6 +67,25 @@ builder.Services.AddAuthentication().AddJwtBearer(JwtBearerDefaults.Authenticati
         RoleClaimType = System.Security.Claims.ClaimTypes.Role,
         NameClaimType = System.Security.Claims.ClaimTypes.Name,
         ClockSkew = TimeSpan.FromSeconds(15)
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<AppUser>>();
+            var principal = context.Principal;
+            var id = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            var stamp = principal?.FindFirst("muzloto_security_stamp")?.Value;
+            var user = id is not null ? await userManager.FindByIdAsync(id) : null;
+            if (user is null || stamp is null || stamp != await userManager.GetSecurityStampAsync(user))
+            {
+                context.Fail("Устаревший токен: войдите заново.");
+                return;
+            }
+            var actualRoles = await userManager.GetRolesAsync(user);
+            var tokenRoles = principal!.FindAll(ClaimTypes.Role).Select(x => x.Value).ToHashSet();
+            if (!tokenRoles.SetEquals(actualRoles)) context.Fail("Права доступа изменились: войдите заново.");
+        }
     };
 });
 builder.Services.AddAuthorization();
@@ -97,6 +118,7 @@ builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddScoped<BookingWorkflow>();
 builder.Services.AddScoped<StaffAccess>();
+builder.Services.AddScoped<StaffManagement>();
 builder.Services.AddScoped<SessionCrud>();
 builder.Services.AddScoped<JwtTokenService>();
 

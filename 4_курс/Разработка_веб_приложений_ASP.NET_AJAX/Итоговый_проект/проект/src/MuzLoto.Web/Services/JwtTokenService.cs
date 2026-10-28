@@ -28,7 +28,8 @@ public sealed class JwtTokenService(IConfiguration config, UserManager<AppUser> 
         {
             new(ClaimTypes.NameIdentifier, user.Id),
             new(ClaimTypes.Name, user.UserName ?? user.Id),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+            new("muzloto_security_stamp", await users.GetSecurityStampAsync(user))
         };
         foreach (var role in await users.GetRolesAsync(user)) claims.Add(new Claim(ClaimTypes.Role, role));
         var credentials = new SigningCredentials(

@@ -1,0 +1,21 @@
+@page "/staff/assignments/{sessionId:guid}"
+@model MuzLoto.Web.Pages.Staff.AssignmentsModel
+@{ ViewData["Title"] = "Назначения сотрудников"; }
+<div class="page-heading"><div><div class="eyebrow">Права доступа</div><h1>Сотрудники игры</h1>
+<p class="muted">@Model.GameTitle</p></div><a class="button secondary" asp-page="/Events/Index">К играм</a></div>
+<section class="panel"><h2>Менеджеры</h2>
+<p class="muted">Добавление даёт менеджеру доступ к заявкам, продажам и уведомлениям только этой игры.</p>
+@if (Model.Managers.Count == 0) { <p class="muted">Нет менеджеров. <a asp-page="/Staff/Index">Создать сотрудника</a>.</p> }
+<div class="card-list">
+@foreach (var manager in Model.Managers)
+{
+<article class="booking-card"><div><strong>@(manager.FullName ?? manager.Email)</strong><p class="muted">@manager.Email</p>
+@if (Model.AssignedIds.Contains(manager.Id)) { <span class="status confirmed">Назначен</span> }
+else { <span class="status pending">Нет доступа</span> }
+</div><form method="post" asp-page-handler="@(Model.AssignedIds.Contains(manager.Id) ? "Remove" : "Assign")">
+<input type="hidden" name="sessionId" value="@Model.SessionId" />
+<input type="hidden" name="userId" value="@manager.Id" />
+<button type="submit" class="button @(Model.AssignedIds.Contains(manager.Id) ? "secondary" : "")">
+@(Model.AssignedIds.Contains(manager.Id) ? "Снять назначение" : "Назначить")</button></form></article>
+}
+</div></section>

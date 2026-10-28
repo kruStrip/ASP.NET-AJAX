@@ -11,7 +11,7 @@
     <p class="muted">@row.Session.Venue · @row.Session.TicketPrice.ToString("N0") ₽ / билет</p>
     <p>Продано: <b>@row.Reserved</b> / @row.Session.Capacity · Осталось: <b>@row.Remaining</b></p>
     <span class="status @(row.Session.CompletedAt.HasValue ? "cancelled" : row.Session.SalesOpen ? "confirmed" : "pending")">@(row.Session.CompletedAt.HasValue ? "Игра прошла" : row.Session.SalesOpen ? "Продажа открыта" : "Продажа закрыта")</span></div>
-    @if (User.IsInRole("Admin")) { <a class="button secondary" asp-page="/Events/Edit" asp-route-id="@row.Session.Id">Изменить</a> }
+    @if (User.IsInRole("Admin")) { <div class="button-stack"><a class="button secondary" asp-page="/Events/Edit" asp-route-id="@row.Session.Id">Изменить</a><a class="button secondary" asp-page="/Staff/Assignments" asp-route-sessionId="@row.Session.Id">Сотрудники игры</a></div> }
     </article>
 }
 @if (Model.Sessions.Count == 0) { <p class="muted">Мероприятий пока нет.</p> }

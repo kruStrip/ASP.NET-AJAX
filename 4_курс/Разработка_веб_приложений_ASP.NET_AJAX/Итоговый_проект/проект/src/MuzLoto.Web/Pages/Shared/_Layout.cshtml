@@ -8,18 +8,26 @@
 </head>
 <body>
 <header class="topbar">
-    <a class="brand" asp-page="/Index">МузЛото<span class="brand-point">.</span></a>
+    <a class="brand" asp-page="@(User.IsInRole("User") ? "/Account/ChangePassword" : "/Index")">МузЛото<span class="brand-point">.</span></a>
     <nav class="nav" aria-label="Основная навигация">
         @if (User.Identity?.IsAuthenticated == true)
         {
-            <a asp-page="/Index">Главная</a>
-            <a asp-page="/Bookings/Pending">Подтверждение</a>
-            <a asp-page="/Bookings/Confirmed">Покупки</a>
-            <a asp-page="/Bookings/Cancelled">Отменённые</a>
-            @if (User.IsInRole("Admin")) { <a asp-page="/Refunds/Index">Возвраты</a> }
-            <a asp-page="/Events/Index">Игры</a>
-            <a asp-page="/Events/Complete">Завершить</a>
-            <a asp-page="/Reports/Index">Отчёт</a>
+            @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+            {
+                <a asp-page="/Index">Главная</a>
+                <a asp-page="/Bookings/Pending">Подтверждение</a>
+                <a asp-page="/Bookings/Confirmed">Покупки</a>
+                <a asp-page="/Bookings/Cancelled">Отменённые</a>
+                @if (User.IsInRole("Admin")) { <a asp-page="/Refunds/Index">Возвраты</a> }
+                <a asp-page="/Events/Index">Игры</a>
+                <a asp-page="/Events/Complete">Завершить</a>
+                @if (User.IsInRole("Admin"))
+                {
+                    <a asp-page="/Reports/Index">Отчёт</a>
+                    <a asp-page="/Staff/Index">Сотрудники</a>
+                }
+            }
+            <a asp-page="/Account/ChangePassword">Пароль</a>
         }
     </nav>
     @if (User.Identity?.IsAuthenticated == true)
@@ -35,12 +43,16 @@
 </main>
 @if (User.Identity?.IsAuthenticated == true)
 {
+    @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+    {
     <nav class="bottom-nav" aria-label="Мобильное меню">
         <a asp-page="/Bookings/Confirmed">Покупки</a>
         <a asp-page="/Bookings/Pending">Ожидают</a>
         <a asp-page="/Events/Index">Игры</a>
         <a asp-page="/Events/Complete">Завершить</a>
+        @if (User.IsInRole("Admin")) { <a asp-page="/Staff/Index">Сотрудники</a> }
     </nav>
+    }
 }
 <script src="~/lib/signalr/signalr.min.js" defer></script>
 <script src="~/js/site.js" asp-append-version="true" defer></script>
