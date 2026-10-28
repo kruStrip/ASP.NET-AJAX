@@ -247,6 +247,9 @@ namespace MuzLoto.Web.Data.Migrations
                     b.Property<string>("LegacyId")
                         .HasColumnType("text");
 
+                    b.Property<string>("OwnerUserId")
+                        .HasColumnType("text");
+
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -274,6 +277,8 @@ namespace MuzLoto.Web.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("OwnerUserId");
 
                     b.HasIndex("GameSessionId", "Status");
 
@@ -609,7 +614,14 @@ namespace MuzLoto.Web.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("MuzLoto.Web.Domain.AppUser", "Owner")
+                        .WithMany("OwnedBookings")
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("GameSession");
+
+                    b.Navigation("Owner");
                 });
 
             modelBuilder.Entity("MuzLoto.Web.Domain.BookingStatusHistory", b =>
@@ -706,6 +718,8 @@ namespace MuzLoto.Web.Data.Migrations
             modelBuilder.Entity("MuzLoto.Web.Domain.AppUser", b =>
                 {
                     b.Navigation("EventAssignments");
+
+                    b.Navigation("OwnedBookings");
                 });
 
             modelBuilder.Entity("MuzLoto.Web.Domain.Booking", b =>
