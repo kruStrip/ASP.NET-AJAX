@@ -10,8 +10,10 @@ using Xunit;
 
 namespace MuzLoto.Tests;
 
-// Shares the app collection so it never creates roles while the app seeder does the same on a fresh database.
-[Collection(AppCollection.Name)]
+// Runs alone, so it never creates roles while the app seeder does the same on a fresh database.
+// (No app fixture: the unit tests in this class must also run without PostgreSQL.)
+[CollectionDefinition(nameof(StaffManagementTests), DisableParallelization = true)]
+[Collection(nameof(StaffManagementTests))]
 public sealed class StaffManagementTests
 {
     [Theory]
