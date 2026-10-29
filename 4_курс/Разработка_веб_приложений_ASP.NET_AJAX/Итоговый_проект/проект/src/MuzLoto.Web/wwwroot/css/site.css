@@ -115,3 +115,7 @@ body.menu-open{overflow:hidden}
 /* Current page in the sidebar: a darker red fill, no outline. */
 .side-nav a.active{background:#460001;color:var(--text);box-shadow:none}
 .status.pending{color:var(--text)}
+/* Paid badge looks like the pending one; danger buttons look like secondary ones. */
+.status.confirmed{background:rgba(0,0,0,.28);color:var(--text);box-shadow:none}
+.button.danger{background:var(--soft);color:var(--text);box-shadow:none}
+.button.danger:hover{background:var(--soft-hover)}
