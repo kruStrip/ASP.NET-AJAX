@@ -112,3 +112,5 @@ body.menu-open{overflow:hidden}
 .button.danger:hover{background:rgba(255,255,255,.12)}
 /* Other yellow highlights follow the same outline style. */
 .side-nav a.active,.status.confirmed,.alert.success{background:transparent;color:var(--text);box-shadow:inset 0 0 0 2px var(--accent)}
+/* Current page in the sidebar: a darker red fill, no outline. */
+.side-nav a.active{background:#460001;color:var(--text);box-shadow:none}
