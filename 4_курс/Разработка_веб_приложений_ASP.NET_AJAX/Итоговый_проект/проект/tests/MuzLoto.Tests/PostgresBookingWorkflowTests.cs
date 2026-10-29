@@ -87,7 +87,7 @@ public sealed class PostgresBookingWorkflowTests
             "Команда 2", "Тест 2", "+70000000002", null, 1));
         Assert.True(replay.Duplicate);
         await workflow.ReopenSessionAsync(session.Id);
-        await db.Entry(session).ReloadAsync();
+        session = await db.GameSessions.AsNoTracking().SingleAsync(x => x.Id == session.Id);
         Assert.Null(session.CompletedAt);
         Assert.False(session.SalesOpen); // Requires deliberate admin action before new bookings
         Assert.False(await db.Bookings.AnyAsync(x => x.Id == second.Id));
@@ -223,8 +223,10 @@ public sealed class PostgresBookingWorkflowTests
         var denied = await Assert.ThrowsAsync<BusinessException>(
             () => workflow.RestoreCancelledAsync(incoming.Id, user.Id));
         Assert.Equal(409, denied.StatusCode);
-        await db.Entry(pending).ReloadAsync();
-        Assert.Equal("CI-test-transfer", pending.TransferReference);
+        // The workflow may clear the shared change tracker when it retries a SERIALIZABLE conflict:
+        // read fresh state with a query instead of reloading a previously tracked instance.
+        Assert.Equal("CI-test-transfer", await db.Refunds.AsNoTracking()
+            .Where(x => x.Id == pending.Id).Select(x => x.TransferReference).SingleAsync());
     }
 
     [Fact]

@@ -3,7 +3,7 @@
 @{ ViewData["Title"] = "Возвраты денег"; }
 <div class="page-heading"><div>
 <div class="eyebrow">Финансовые операции</div><h1>Возвраты денег</h1>
-<p class="muted">Отмена оплаченного заказа освобождает билеты и создаёт запрос на возврат.
+<p class="muted">Отмена оплаченного заказа или уменьшение количества освобождает билеты и создаёт запрос на возврат.
 Нажимайте «Деньги возвращены» только после реального перечисления клиенту. Система не переводит деньги автоматически.</p>
 </div></div>
 <div data-live-list>
@@ -16,6 +16,7 @@
     <div>
       <span class="eyebrow">@booking.GameSession.Game.Title — @ScheduleTime.ToLocal(booking.GameSession.StartsAt, booking.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</span>
       <h2>@booking.TeamName · @refund.Amount.ToString("N2") ₽</h2>
+      <p class="muted">@(refund.Kind == RefundKind.QuantityDecrease ? "Частичный возврат: уменьшено количество билетов, заказ остаётся оплаченным" : "Возврат за отменённый заказ")</p>
       <p>@booking.CustomerName · @booking.Quantity бил. · <a href="tel:@booking.Phone">@booking.Phone</a></p>
       <span class="status pending">Деньги ещё не возвращены</span>
     </div>
@@ -37,6 +38,7 @@
   var booking = refund.Payment.Booking;
   <article class="booking-card" data-session-id="@booking.GameSessionId">
     <div><h2>@booking.TeamName — @refund.Amount.ToString("N2") ₽</h2>
+      <p class="muted">@(refund.Kind == RefundKind.QuantityDecrease ? "Частичный (уменьшение количества)" : "Отмена заказа")</p>
       <p>@booking.CustomerName · @booking.GameSession.Game.Title</p>
       <p class="muted">Возврат подтверждён: @(refund.CompletedAt?.ToString("dd.MM.yyyy HH:mm") ?? "—") (UTC)</p>
       @if (!string.IsNullOrWhiteSpace(refund.TransferReference)) { <p class="muted">Примечание: @refund.TransferReference</p> }

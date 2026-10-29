@@ -57,7 +57,11 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) { show(result.detail || `Ошибка ${response.status}`, true); return; }
       show(result.message || 'Изменения сохранены.');
-      if (form.dataset.ajaxAction === 'game-complete') {
+      // Edits keep the card: the refreshed list below shows the new count, total and remaining seats.
+      const keepsCard = ['booking-quantity', 'booking-surcharge'].includes(form.dataset.ajaxAction);
+      if (keepsCard) {
+        // nothing to remove
+      } else if (form.dataset.ajaxAction === 'game-complete') {
         const card = form.closest('.booking-card');
         if (card) {
           form.remove();

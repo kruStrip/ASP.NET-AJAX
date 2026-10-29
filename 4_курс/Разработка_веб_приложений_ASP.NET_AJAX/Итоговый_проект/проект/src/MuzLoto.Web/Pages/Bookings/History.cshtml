@@ -1,0 +1,27 @@
+@page "/bookings/history"
+@model MuzLoto.Web.Pages.Bookings.HistoryModel
+@{ ViewData["Title"] = "История продаж"; }
+<div class="page-heading"><div><div class="eyebrow">Оплаченные заказы за всё время</div><h1>История продаж</h1>
+<p class="muted">Включая прошедшие и архивные игры. Отменённые заказы остаются в истории вместе с возвратами.</p></div></div>
+<partial name="_BookingSearch" model="Model.Q" />
+<div class="card-list">
+@foreach (var row in Model.Rows)
+{
+    var b = row.Booking;
+    <article class="booking-card"><div>
+    <span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</span>
+    <h2>@b.TeamName</h2>
+    <p>@b.CustomerName · @b.Quantity бил. · <a href="tel:@b.Phone">@b.Phone</a> · ID @b.Id.ToString()[..8]</p>
+    <p>Оплачено <b>@row.Paid.ToString("N2") ₽</b>
+       @if (row.Refunded > 0) { <span>· возвращено @row.Refunded.ToString("N2") ₽</span> }
+       @if (row.RefundPending > 0) { <span>· ожидает возврата @row.RefundPending.ToString("N2") ₽</span> }
+       @if (row.Changes > 0) { <span>· изменений количества: @row.Changes</span> }</p>
+    <span class="status @(b.Status == BookingStatus.Confirmed ? "confirmed" : "cancelled")">@(b.Status == BookingStatus.Confirmed ? (b.GameSession.CompletedAt.HasValue ? "Игра прошла" : "Оплачено") : "Отменено")</span>
+    </div></article>
+}
+@if (Model.Rows.Count == 0) { <p class="muted">Ничего не найдено.</p> }
+</div>
+<div class="actions">
+@if (Model.PageNumber > 1) { <a class="button secondary" asp-route-pageNumber="@(Model.PageNumber - 1)" asp-route-q="@Model.Q">← Новее</a> }
+@if (Model.HasMore) { <a class="button secondary" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-q="@Model.Q">Старее →</a> }
+</div>

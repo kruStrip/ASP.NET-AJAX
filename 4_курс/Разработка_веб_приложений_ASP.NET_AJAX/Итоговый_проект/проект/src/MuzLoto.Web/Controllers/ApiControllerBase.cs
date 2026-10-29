@@ -10,10 +10,7 @@ public abstract class ApiControllerBase : ControllerBase
     {
         try { return await action(); }
         catch (BusinessException e) { return Problem(statusCode: e.StatusCode, title: "Операция отклонена", detail: e.Message); }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException e) when (
-            e.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.SerializationFailure })
-        { return Problem(statusCode: 409, title: "Данные изменились", detail: "Повторите запрос."); }
-        catch (Npgsql.PostgresException e) when (e.SqlState == Npgsql.PostgresErrorCodes.SerializationFailure)
+        catch (Exception e) when (DbErrors.IsSerializationFailure(e))
         { return Problem(statusCode: 409, title: "Данные изменились", detail: "Повторите запрос."); }
     }
 }

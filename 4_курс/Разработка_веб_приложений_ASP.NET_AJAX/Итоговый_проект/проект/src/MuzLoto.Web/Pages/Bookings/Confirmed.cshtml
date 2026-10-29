@@ -1,18 +1,43 @@
 @page "/bookings"
 @model MuzLoto.Web.Pages.Bookings.ConfirmedModel
 @{ ViewData["Title"] = "Покупки билетов"; }
-<div class="page-heading"><div><div class="eyebrow">Подтверждённые заказы</div><h1>Покупки билетов</h1></div></div>
+<div class="page-heading"><div><div class="eyebrow">Подтверждённые заказы</div><h1>Покупки билетов</h1>
+<p class="muted">Меньше билетов — места освобождаются сразу и создаётся возврат разницы. Больше — нужна доплата, места займутся после её подтверждения.</p></div>
+<a class="button secondary" asp-page="/Bookings/History">История продаж</a></div>
+<partial name="_BookingSearch" model="Model.Q" />
 <div class="card-list" data-live-list>
 @foreach (var b in Model.Bookings)
 {
 <article class="booking-card" data-session-id="@b.GameSessionId"><div><span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM HH:mm") (@b.GameSession.TimeZoneId)</span>
-<h2>@b.TeamName</h2><p>@b.CustomerName · @b.Quantity бил. · @((b.Quantity*b.TicketPriceSnapshot).ToString("N2")) ₽</p>
+<h2>@b.TeamName</h2><p>@b.CustomerName · <b>@b.Quantity</b> бил. · <b>@((b.Quantity*b.TicketPriceSnapshot).ToString("N2"))</b> ₽</p>
 <p><a href="tel:@b.Phone">@b.Phone</a> @if (!string.IsNullOrWhiteSpace(b.Telegram)) { <span>· Telegram: @b.Telegram</span> }</p>
-<span class="status confirmed">Оплата подтверждена</span></div>
-<form method="post" asp-page-handler="Cancel" data-ajax-action="booking-cancel" data-confirm="Отменить подтверждённую покупку? Билеты освободятся и будет создан запрос на полный возврат денег. После фактического перевода подтвердите возврат в разделе «Возвраты».">
-<input type="hidden" name="id" value="@b.Id" /><button class="button secondary" type="submit">Отменить</button></form></article>
+<p class="muted">Свободно мест на игре: @Model.RemainingBySession.GetValueOrDefault(b.GameSessionId) · ID @b.Id.ToString()[..8]</p>
+<span class="status confirmed">Оплата подтверждена</span>
+@if (Model.AwaitingSurcharge.TryGetValue(b.Id, out var change))
+{
+    <p class="alert">Ожидает доплаты: @change.OldQuantity → <b>@change.NewQuantity</b> бил., <b>@change.Amount.ToString("N0") ₽</b></p>
+    <div class="actions">
+    <form method="post" asp-page-handler="Surcharge" data-ajax-action="booking-surcharge" data-confirm="Доплата действительно получена? Будут заняты дополнительные места.">
+        <input type="hidden" name="id" value="@b.Id" /><input type="hidden" name="changeId" value="@change.Id" /><input type="hidden" name="received" value="true" />
+        <button class="button" type="submit">Доплата получена</button></form>
+    <form method="post" asp-page-handler="Surcharge" data-ajax-action="booking-surcharge">
+        <input type="hidden" name="id" value="@b.Id" /><input type="hidden" name="changeId" value="@change.Id" /><input type="hidden" name="received" value="false" />
+        <button class="button secondary" type="submit">Отменить изменение</button></form>
+    </div>
 }
-@if (Model.Bookings.Count == 0) { <p class="muted">Подтверждённых покупок активных игр нет.</p> }
+</div>
+<div class="button-stack">
+@if (!Model.AwaitingSurcharge.ContainsKey(b.Id))
+{
+<form method="post" asp-page-handler="Quantity" data-ajax-action="booking-quantity" class="inline-form" data-confirm="Изменить количество в оплаченном заказе? Уменьшение создаст возврат разницы, увеличение — ожидание доплаты.">
+<input type="hidden" name="id" value="@b.Id" />
+<label class="sr-only" for="q-@b.Id">Количество билетов</label><input id="q-@b.Id" name="quantity" type="number" min="0" value="@b.Quantity" required />
+<button class="button secondary" type="submit">Изменить</button></form>
+}
+<form method="post" asp-page-handler="Cancel" data-ajax-action="booking-cancel" data-confirm="Отменить подтверждённую покупку? Билеты освободятся и будет создан запрос на возврат денег. После фактического перевода подтвердите возврат в разделе «Возвраты».">
+<input type="hidden" name="id" value="@b.Id" /><button class="button secondary" type="submit">Отменить</button></form></div></article>
+}
+@if (Model.Bookings.Count == 0) { <p class="muted">@(string.IsNullOrWhiteSpace(Model.Q) ? "Подтверждённых покупок активных игр нет." : "Ничего не найдено.")</p> }
 </div>
 
 @foreach (var sessionId in Model.AccessibleSessionIds) { <span hidden data-signalr-session="@sessionId"></span> }

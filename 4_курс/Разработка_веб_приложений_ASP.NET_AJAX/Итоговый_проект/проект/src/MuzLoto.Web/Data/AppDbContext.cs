@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<BookingStatusHistory> BookingStatusHistory => Set<BookingStatusHistory>();
     public DbSet<EventStaffAssignment> EventStaffAssignments => Set<EventStaffAssignment>();
     public DbSet<ExternalSubmission> ExternalSubmissions => Set<ExternalSubmission>();
+    public DbSet<QuantityChange> QuantityChanges => Set<QuantityChange>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -64,14 +65,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(x => x.Amount).HasPrecision(12, 2);
             e.Property(x => x.TransferReference).HasMaxLength(200);
             e.HasIndex(x => x.Status);
-            // At most one open or completed refund per payment; cancelled requests
-            // remain in the audit trail and don't prevent a later new request.
+            // At most one open or completed *cancellation* refund per payment; partial refunds for
+            // reduced orders may be several. Cancelled requests stay in the audit trail.
             e.HasIndex(x => x.PaymentId).IsUnique()
-                .HasFilter("\"Status\" IN (0, 1)");
+                .HasFilter("\"Status\" IN (0, 1) AND \"Kind\" = 0")
+                .HasDatabaseName("IX_Refunds_PaymentId_OpenCancellation");
+            e.HasIndex(x => new { x.PaymentId, x.Kind });
         });
         b.Entity<BookingStatusHistory>(e =>
         {
             e.HasOne(x => x.Booking).WithMany(bk => bk.StatusHistory).HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<QuantityChange>(e =>
+        {
+            e.HasOne(x => x.Booking).WithMany(bk => bk.QuantityChanges).HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Refund).WithMany().HasForeignKey(x => x.RefundId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Amount).HasPrecision(12, 2);
+            e.Ignore(x => x.IsIncrease);
+            // One surcharge waiting at a time per order.
+            e.HasIndex(x => x.BookingId).IsUnique().HasFilter("\"Status\" = 0")
+                .HasDatabaseName("IX_QuantityChanges_BookingId_Awaiting");
         });
         b.Entity<EventStaffAssignment>(e =>
         {

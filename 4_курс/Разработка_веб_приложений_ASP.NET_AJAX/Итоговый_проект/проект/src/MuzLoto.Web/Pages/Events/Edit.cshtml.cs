@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using MuzLoto.Web.Data;
 using MuzLoto.Web.Domain;
-using Npgsql;
+using MuzLoto.Web.Services;
 
 namespace MuzLoto.Web.Pages.Events;
 
@@ -56,8 +56,7 @@ public class EditModel(AppDbContext db) : PageModel
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
-        catch (Exception ex) when (ex is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure } ||
-                                   ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure })
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
             ModelState.AddModelError(string.Empty, "Данные изменились одновременно. Повторите сохранение.");
             return Page();

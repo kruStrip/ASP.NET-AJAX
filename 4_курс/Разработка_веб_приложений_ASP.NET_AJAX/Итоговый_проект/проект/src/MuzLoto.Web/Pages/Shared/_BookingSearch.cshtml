@@ -1,0 +1,6 @@
+@model string?
+<form method="get" class="filters" role="search">
+    <input name="q" value="@Model" type="search" placeholder="Телефон, команда, имя или ID" aria-label="Поиск заявок" />
+    <button class="button secondary" type="submit">Найти</button>
+    @if (!string.IsNullOrWhiteSpace(Model)) { <a class="button secondary" href="?">Сбросить</a> }
+</form>

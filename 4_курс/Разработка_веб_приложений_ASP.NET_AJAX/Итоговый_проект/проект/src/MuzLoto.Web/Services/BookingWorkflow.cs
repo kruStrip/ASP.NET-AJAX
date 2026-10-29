@@ -28,7 +28,10 @@ public sealed class BookingWorkflow(
     /// <summary>Optional global cap; by default a booking may take up to the remaining seats.</summary>
     private int? MaxPerBooking => config.GetValue<int?>("Booking:MaxTicketsPerBooking");
 
-    public async Task<(Guid Id, bool Duplicate)> ReceiveAsync(IncomingBooking input, CancellationToken ct = default)
+    public Task<(Guid Id, bool Duplicate)> ReceiveAsync(IncomingBooking input, CancellationToken ct = default) =>
+        WithRetry(() => ReceiveCoreAsync(input, ct), ct);
+
+    private async Task<(Guid Id, bool Duplicate)> ReceiveCoreAsync(IncomingBooking input, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(input.ExternalSubmissionId) || input.ExternalSubmissionId.Length > 250 ||
             string.IsNullOrWhiteSpace(input.TeamName) || input.TeamName.Length > 150 ||
@@ -77,7 +80,7 @@ public sealed class BookingWorkflow(
             await tx.CommitAsync(ct);
             sessionId = session.Id;
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
         {
             db.ChangeTracker.Clear();
             var existing = await db.ExternalSubmissions.AsNoTracking().SingleOrDefaultAsync(
@@ -85,15 +88,18 @@ public sealed class BookingWorkflow(
             if (existing is not null) return (existing.BookingId ?? Guid.Empty, true);
             throw new BusinessException("Повторите запрос позже, данные обновляются.");
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
-            throw new BusinessException("Данные мероприятия изменились. Повторите запрос.");
+            throw new ConcurrencyConflictException("Данные мероприятия изменились. Повторите запрос.");
         }
         await NotifyAsync(sessionId, "BookingCreated", booking!.Id);
         return (booking.Id, false);
     }
 
-    public async Task ConfirmAsync(Guid bookingId, string userId, CancellationToken ct = default)
+    public Task ConfirmAsync(Guid bookingId, string userId, CancellationToken ct = default) =>
+        WithRetry(() => ConfirmCoreAsync(bookingId, userId, ct), ct);
+
+    private async Task ConfirmCoreAsync(Guid bookingId, string userId, CancellationToken ct = default)
     {
         Guid sessionId;
         try
@@ -131,15 +137,18 @@ public sealed class BookingWorkflow(
             await tx.CommitAsync(ct);
             sessionId = session.Id;
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
-            throw new BusinessException("Места изменились одновременно. Обновите страницу и попробуйте ещё раз.");
+            throw new ConcurrencyConflictException("Места изменились одновременно. Обновите страницу и попробуйте ещё раз.");
         }
         await NotifyAsync(sessionId, "BookingConfirmed", bookingId);
         await NotifyAsync(sessionId, "TicketsAvailabilityChanged", bookingId);
     }
 
-    public async Task CancelAsync(Guid bookingId, string userId, CancellationToken ct = default)
+    public Task CancelAsync(Guid bookingId, string userId, CancellationToken ct = default) =>
+        WithRetry(() => CancelCoreAsync(bookingId, userId, ct), ct);
+
+    private async Task CancelCoreAsync(Guid bookingId, string userId, CancellationToken ct = default)
     {
         Guid sessionId;
         try
@@ -155,20 +164,25 @@ public sealed class BookingWorkflow(
             {
                 var payment = booking.Payment
                     ?? throw new BusinessException("Подтверждённый платёж не найден: проверьте заказ.");
-                if (await db.Refunds.AnyAsync(x => x.PaymentId == payment.Id &&
-                    x.Status == RefundStatus.Completed, ct))
+                var cancellations = db.Refunds.Where(x => x.PaymentId == payment.Id && x.Kind == RefundKind.Cancellation);
+                if (await cancellations.AnyAsync(x => x.Status == RefundStatus.Completed, ct))
                     throw new BusinessException("По этому платежу уже зафиксирован возврат.");
-                if (payment.Amount > 0)
-                {
-                    if (await db.Refunds.AnyAsync(x => x.PaymentId == payment.Id &&
-                        x.Status == RefundStatus.Pending, ct))
-                        throw new BusinessException("Возврат уже ожидает выполнения.");
+                if (await cancellations.AnyAsync(x => x.Status == RefundStatus.Pending, ct))
+                    throw new BusinessException("Возврат уже ожидает выполнения.");
+                // Partial refunds for earlier reductions are owed separately; refund only the rest.
+                var alreadyOwed = await db.Refunds.Where(x => x.PaymentId == payment.Id &&
+                        x.Kind == RefundKind.QuantityDecrease && x.Status != RefundStatus.Cancelled)
+                    .SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
+                var amount = payment.Amount - alreadyOwed;
+                if (amount > 0)
                     db.Refunds.Add(new Refund
                     {
-                        PaymentId = payment.Id, Amount = payment.Amount,
+                        PaymentId = payment.Id, Amount = amount, Kind = RefundKind.Cancellation,
                         RequestedAt = now, RequestedByUserId = userId
                     });
-                }
+                // A surcharge that was never paid is simply dropped.
+                await db.QuantityChanges.Where(x => x.BookingId == booking.Id && x.Status == QuantityChangeStatus.AwaitingPayment)
+                    .ForEachAsync(x => { x.Status = QuantityChangeStatus.Cancelled; x.CompletedAt = now; x.CompletedByUserId = userId; }, ct);
             }
             booking.Status = BookingStatus.Cancelled;
             booking.CancelledAt = now;
@@ -184,9 +198,9 @@ public sealed class BookingWorkflow(
             await tx.CommitAsync(ct);
             sessionId = booking.GameSessionId;
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
-            throw new BusinessException("Состояние заказа изменилось. Обновите страницу и повторите попытку.");
+            throw new ConcurrencyConflictException("Состояние заказа изменилось. Обновите страницу и повторите попытку.");
         }
         await NotifyAsync(sessionId, "BookingUpdated", bookingId);
         await NotifyAsync(sessionId, "RefundRequested", bookingId);
@@ -194,7 +208,11 @@ public sealed class BookingWorkflow(
     }
 
     /// <summary>Edit an unpaid booking. Pending requests hold no seats, so only the remaining-seat limit applies.</summary>
-    public async Task UpdatePendingAsync(Guid bookingId, string teamName, string customerName,
+    public Task UpdatePendingAsync(Guid bookingId, string teamName, string customerName,
+        string? telegram, int quantity, CancellationToken ct = default) =>
+        WithRetry(() => UpdatePendingCoreAsync(bookingId, teamName, customerName, telegram, quantity, ct), ct);
+
+    private async Task UpdatePendingCoreAsync(Guid bookingId, string teamName, string customerName,
         string? telegram, int quantity, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(teamName) || teamName.Length > 150 ||
@@ -226,15 +244,159 @@ public sealed class BookingWorkflow(
             await tx.CommitAsync(ct);
             sessionId = session.Id;
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
-            throw new BusinessException("Данные заявки изменились одновременно. Повторите сохранение.");
+            throw new ConcurrencyConflictException("Данные заявки изменились одновременно. Повторите сохранение.");
         }
         await NotifyAsync(sessionId, "BookingUpdated", bookingId);
     }
 
+    /// <summary>
+    /// Changes the ticket count of a paid order. A decrease frees seats at once and queues a refund of the difference;
+    /// an increase waits for a surcharge and takes seats only when staff confirm it (ConfirmSurchargeAsync).
+    /// Setting zero is a cancellation and goes through CancelAsync.
+    /// </summary>
+    public Task<QuantityChange?> ChangePaidQuantityAsync(Guid bookingId, int newQuantity, string userId,
+        CancellationToken ct = default) =>
+        WithRetry(() => ChangePaidQuantityCoreAsync(bookingId, newQuantity, userId, ct), ct);
+
+    private async Task<QuantityChange?> ChangePaidQuantityCoreAsync(Guid bookingId, int newQuantity, string userId,
+        CancellationToken ct = default)
+    {
+        if (newQuantity < 1 || newQuantity > (MaxPerBooking ?? int.MaxValue))
+            throw new BusinessException("Количество билетов должно быть не меньше 1. Для отмены используйте «Отменить».", 400);
+        QuantityChange change;
+        Guid sessionId;
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var booking = await db.Bookings.Include(x => x.Payment).Include(x => x.GameSession)
+                .SingleOrDefaultAsync(x => x.Id == bookingId, ct)
+                ?? throw new BusinessException("Заявка не найдена.", 404);
+            if (booking.Status != BookingStatus.Confirmed || booking.Payment is null)
+                throw new BusinessException("Изменение с доплатой или возвратом возможно только для оплаченного заказа.");
+            if (booking.GameSession.CompletedAt.HasValue || booking.GameSession.ArchivedAt.HasValue)
+                throw new BusinessException("Игра завершена: количество в заказе не меняется.");
+            if (await db.QuantityChanges.AnyAsync(x => x.BookingId == bookingId && x.Status == QuantityChangeStatus.AwaitingPayment, ct))
+                throw new BusinessException("По заказу уже ожидается доплата. Подтвердите или отмените её.");
+            if (newQuantity == booking.Quantity) return null;
+
+            var now = DateTimeOffset.UtcNow;
+            var delta = newQuantity - booking.Quantity;
+            change = new QuantityChange
+            {
+                BookingId = booking.Id, OldQuantity = booking.Quantity, NewQuantity = newQuantity,
+                Amount = Math.Abs(delta) * booking.TicketPriceSnapshot,
+                RequestedAt = now, RequestedByUserId = userId
+            };
+            if (delta > 0)
+            {
+                // Check early so staff do not ask for money that cannot buy seats; re-checked on confirmation.
+                await EnsureSeatsAsync(booking.GameSession, delta, ct);
+                change.Status = QuantityChangeStatus.AwaitingPayment;
+            }
+            else
+            {
+                var refund = new Refund
+                {
+                    PaymentId = booking.Payment.Id, Amount = change.Amount, Kind = RefundKind.QuantityDecrease,
+                    RequestedAt = now, RequestedByUserId = userId
+                };
+                db.Refunds.Add(refund);
+                booking.Quantity = newQuantity;
+                change.Refund = refund;
+                change.Status = QuantityChangeStatus.Applied;
+                change.CompletedAt = now;
+                change.CompletedByUserId = userId;
+            }
+            db.QuantityChanges.Add(change);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            sessionId = booking.GameSessionId;
+        }
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
+        {
+            throw new ConcurrencyConflictException("Заказ изменился одновременно. Обновите страницу и повторите.");
+        }
+        await NotifyAsync(sessionId, "BookingUpdated", bookingId);
+        if (!change.IsIncrease)
+        {
+            await NotifyAsync(sessionId, "RefundRequested", bookingId);
+            await NotifyAsync(sessionId, "TicketsAvailabilityChanged", bookingId);
+        }
+        return change;
+    }
+
+    /// <summary>Staff confirm the surcharge arrived: seats are re-checked under the lock, then taken and the payment grows.</summary>
+    public Task ConfirmSurchargeAsync(Guid changeId, string userId, CancellationToken ct = default) =>
+        WithRetry(() => ConfirmSurchargeCoreAsync(changeId, userId, ct), ct);
+
+    private async Task ConfirmSurchargeCoreAsync(Guid changeId, string userId, CancellationToken ct = default)
+    {
+        Guid sessionId, bookingId;
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var change = await db.QuantityChanges.Include(x => x.Booking).ThenInclude(x => x.Payment)
+                .Include(x => x.Booking).ThenInclude(x => x.GameSession)
+                .SingleOrDefaultAsync(x => x.Id == changeId, ct)
+                ?? throw new BusinessException("Изменение не найдено.", 404);
+            if (change.Status == QuantityChangeStatus.Applied) return; // idempotent repeat
+            if (change.Status != QuantityChangeStatus.AwaitingPayment)
+                throw new BusinessException("Это изменение больше не ожидает доплаты.");
+            var booking = change.Booking;
+            if (booking.Status != BookingStatus.Confirmed || booking.Payment is null || booking.Quantity != change.OldQuantity)
+                throw new BusinessException("Заказ изменился. Отмените доплату и оформите изменение заново.");
+            if (booking.GameSession.CompletedAt.HasValue || booking.GameSession.ArchivedAt.HasValue)
+                throw new BusinessException("Игра завершена: доплату подтвердить нельзя.");
+            await EnsureSeatsAsync(booking.GameSession, change.NewQuantity - change.OldQuantity, ct);
+
+            var now = DateTimeOffset.UtcNow;
+            booking.Quantity = change.NewQuantity;
+            booking.Payment.Amount += change.Amount;
+            change.Status = QuantityChangeStatus.Applied;
+            change.CompletedAt = now;
+            change.CompletedByUserId = userId;
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            (sessionId, bookingId) = (booking.GameSessionId, booking.Id);
+        }
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
+        {
+            throw new ConcurrencyConflictException("Места изменились одновременно. Повторите подтверждение.");
+        }
+        await NotifyAsync(sessionId, "BookingUpdated", bookingId);
+        await NotifyAsync(sessionId, "TicketsAvailabilityChanged", bookingId);
+    }
+
+    public async Task CancelSurchargeAsync(Guid changeId, string userId, CancellationToken ct = default)
+    {
+        var change = await db.QuantityChanges.Include(x => x.Booking).SingleOrDefaultAsync(x => x.Id == changeId, ct)
+            ?? throw new BusinessException("Изменение не найдено.", 404);
+        if (change.Status == QuantityChangeStatus.Cancelled) return;
+        if (change.Status != QuantityChangeStatus.AwaitingPayment)
+            throw new BusinessException("Доплата уже подтверждена.");
+        change.Status = QuantityChangeStatus.Cancelled;
+        change.CompletedAt = DateTimeOffset.UtcNow;
+        change.CompletedByUserId = userId;
+        await db.SaveChangesAsync(ct);
+        await NotifyAsync(change.Booking.GameSessionId, "BookingUpdated", change.BookingId);
+    }
+
+    private async Task EnsureSeatsAsync(GameSession session, int extraSeats, CancellationToken ct)
+    {
+        var reserved = await db.Bookings
+            .Where(x => x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed)
+            .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
+        if (!CapacityCalculator.CanConfirm(session.Capacity, reserved, extraSeats))
+            throw new BusinessException($"Свободных мест недостаточно: осталось {Math.Max(0, session.Capacity - reserved)}.");
+    }
+
     /// <summary>Restore a cancelled booking within one hour, retaining any previously recorded payment.</summary>
-    public async Task RestoreCancelledAsync(Guid bookingId, string userId, CancellationToken ct = default)
+    public Task RestoreCancelledAsync(Guid bookingId, string userId, CancellationToken ct = default) =>
+        WithRetry(() => RestoreCancelledCoreAsync(bookingId, userId, ct), ct);
+
+    private async Task RestoreCancelledCoreAsync(Guid bookingId, string userId, CancellationToken ct = default)
     {
         Guid sessionId;
         try
@@ -267,10 +429,10 @@ public sealed class BookingWorkflow(
                 var payment = await db.Payments.SingleOrDefaultAsync(x => x.BookingId == bookingId, ct)
                     ?? throw new BusinessException("Платёж не найден. Требуется проверка сотрудником.");
                 if (await db.Refunds.AnyAsync(x => x.PaymentId == payment.Id &&
-                    x.Status == RefundStatus.Completed, ct))
+                    x.Kind == RefundKind.Cancellation && x.Status == RefundStatus.Completed, ct))
                     throw new BusinessException("Деньги уже возвращены клиенту. Для нового бронирования нужна новая оплата.");
                 pendingRefundToCancel = await db.Refunds.SingleOrDefaultAsync(x =>
-                    x.PaymentId == payment.Id && x.Status == RefundStatus.Pending, ct);
+                    x.PaymentId == payment.Id && x.Kind == RefundKind.Cancellation && x.Status == RefundStatus.Pending, ct);
                 var reserved = await db.Bookings
                     .Where(x => x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed)
                     .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
@@ -297,9 +459,9 @@ public sealed class BookingWorkflow(
             await tx.CommitAsync(ct);
             sessionId = session.Id;
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
-            throw new BusinessException("Состав мест изменился одновременно. Повторите запрос.");
+            throw new ConcurrencyConflictException("Состав мест изменился одновременно. Повторите запрос.");
         }
         await NotifyAsync(sessionId, "BookingUpdated", bookingId);
         await NotifyAsync(sessionId, "RefundCancelled", bookingId);
@@ -310,7 +472,11 @@ public sealed class BookingWorkflow(
     /// Record a refund only AFTER an employee has actually transferred the money.
     /// Booking cancellation itself never marks funds returned.
     /// </summary>
-    public async Task ConfirmRefundAsync(Guid refundId, string userId,
+    public Task ConfirmRefundAsync(Guid refundId, string userId,
+        string? transferReference = null, CancellationToken ct = default) =>
+        WithRetry(() => ConfirmRefundCoreAsync(refundId, userId, transferReference, ct), ct);
+
+    private async Task ConfirmRefundCoreAsync(Guid refundId, string userId,
         string? transferReference = null, CancellationToken ct = default)
     {
         if (transferReference?.Length > 200)
@@ -325,14 +491,15 @@ public sealed class BookingWorkflow(
             if (refund.Status == RefundStatus.Completed) return; // idempotent re-submit
             if (refund.Status != RefundStatus.Pending)
                 throw new BusinessException("Этот запрос больше не ожидает возврата.");
-            if (refund.Payment.Booking.Status != BookingStatus.Cancelled)
+            if (refund.Kind == RefundKind.Cancellation && refund.Payment.Booking.Status != BookingStatus.Cancelled)
                 throw new BusinessException("Бронирование уже восстановлено. Возврат запрещён.");
-            if (refund.Payment.Status != PaymentStatus.Confirmed ||
-                refund.Amount <= 0 || refund.Amount != refund.Payment.Amount)
+            if (refund.Payment.Status != PaymentStatus.Confirmed || refund.Amount <= 0)
                 throw new BusinessException("Данные суммы возврата некорректны.");
-            if (await db.Refunds.AnyAsync(x => x.PaymentId == refund.PaymentId &&
-                x.Status == RefundStatus.Completed, ct))
+            var completed = db.Refunds.Where(x => x.PaymentId == refund.PaymentId && x.Status == RefundStatus.Completed);
+            if (refund.Kind == RefundKind.Cancellation && await completed.AnyAsync(x => x.Kind == RefundKind.Cancellation, ct))
                 throw new BusinessException("Деньги по платежу уже возвращены.");
+            if ((await completed.SumAsync(x => (decimal?)x.Amount, ct) ?? 0) + refund.Amount > refund.Payment.Amount)
+                throw new BusinessException("Сумма возвратов превысила бы полученную оплату.");
 
             refund.Status = RefundStatus.Completed;
             refund.CompletedAt = DateTimeOffset.UtcNow;
@@ -342,15 +509,18 @@ public sealed class BookingWorkflow(
             await tx.CommitAsync(ct);
             sessionId = refund.Payment.Booking.GameSessionId;
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
-            throw new BusinessException("Статус возврата изменился одновременно. Обновите страницу.");
+            throw new ConcurrencyConflictException("Статус возврата изменился одновременно. Обновите страницу.");
         }
         await NotifyAsync(sessionId, "RefundCompleted", refundId);
     }
 
     /// <summary>Undo an accidentally completed event; deleted pending bookings are not recreated.</summary>
-    public async Task ReopenSessionAsync(Guid sessionId, CancellationToken ct = default)
+    public Task ReopenSessionAsync(Guid sessionId, CancellationToken ct = default) =>
+        WithRetry(() => ReopenSessionCoreAsync(sessionId, ct), ct);
+
+    private async Task ReopenSessionCoreAsync(Guid sessionId, CancellationToken ct = default)
     {
         try
         {
@@ -365,14 +535,17 @@ public sealed class BookingWorkflow(
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
-            throw new BusinessException("Состояние игры изменилось. Повторите запрос.");
+            throw new ConcurrencyConflictException("Состояние игры изменилось. Повторите запрос.");
         }
         await NotifyAsync(sessionId, "GameReopened", sessionId);
     }
 
-    public async Task CompleteSessionAsync(Guid sessionId, CancellationToken ct = default)
+    public Task CompleteSessionAsync(Guid sessionId, CancellationToken ct = default) =>
+        WithRetry(() => CompleteSessionCoreAsync(sessionId, ct), ct);
+
+    private async Task CompleteSessionCoreAsync(Guid sessionId, CancellationToken ct = default)
     {
         try
         {
@@ -390,9 +563,9 @@ public sealed class BookingWorkflow(
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
-            throw new BusinessException("Данные игры изменились одновременно. Обновите страницу и повторите попытку.");
+            throw new ConcurrencyConflictException("Данные игры изменились одновременно. Обновите страницу и повторите попытку.");
         }
         await NotifyAsync(sessionId, "GameCompleted", sessionId);
     }
@@ -403,9 +576,25 @@ public sealed class BookingWorkflow(
         catch (Exception ex) { logger.LogWarning(ex, "SignalR notification {Method} failed after database commit", method); }
     }
 
-    private static bool IsUniqueViolation(DbUpdateException ex) =>
-        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
-    private static bool IsSerializationFailure(Exception ex) =>
-        ex is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure } ||
-        ex is DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.SerializationFailure } };
+    private const int MaxAttempts = 5;
+
+    /// <summary>
+    /// SERIALIZABLE transactions may be aborted by PostgreSQL when they race (40001). Re-running the whole
+    /// operation re-reads fresh data, so the outcome is still correct (e.g. "no seats left" instead of overselling).
+    /// </summary>
+    private async Task<T> WithRetry<T>(Func<Task<T>> operation, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { return await operation(); }
+            catch (ConcurrencyConflictException) when (attempt < MaxAttempts)
+            {
+                db.ChangeTracker.Clear();
+                await Task.Delay(Random.Shared.Next(10, 50) * attempt, ct);
+            }
+        }
+    }
+
+    private Task WithRetry(Func<Task> operation, CancellationToken ct) =>
+        WithRetry(async () => { await operation(); return true; }, ct);
 }

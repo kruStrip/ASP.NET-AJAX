@@ -76,6 +76,7 @@ public class Booking
     public Payment? Payment { get; set; }
     public ICollection<BookingStatusHistory> StatusHistory { get; set; } = new List<BookingStatusHistory>();
     public ICollection<ExternalSubmission> ExternalSubmissions { get; set; } = new List<ExternalSubmission>();
+    public ICollection<QuantityChange> QuantityChanges { get; set; } = new List<QuantityChange>();
 }
 
 public enum PaymentStatus { Confirmed }
@@ -95,12 +96,16 @@ public class Payment
 /// <summary>Only Completed refunds represent money actually returned to the customer.</summary>
 public enum RefundStatus { Pending, Completed, Cancelled }
 
+/// <summary>Why money goes back: the whole order was cancelled, or a paid order was reduced.</summary>
+public enum RefundKind { Cancellation, QuantityDecrease }
+
 public class Refund
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid PaymentId { get; set; }
     public Payment Payment { get; set; } = null!;
     public decimal Amount { get; set; }
+    public RefundKind Kind { get; set; } = RefundKind.Cancellation;
     public RefundStatus Status { get; set; } = RefundStatus.Pending;
     public DateTimeOffset RequestedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? RequestedByUserId { get; set; }
@@ -139,4 +144,27 @@ public class ExternalSubmission
     public Guid? BookingId { get; set; }
     public Booking? Booking { get; set; }
     public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>AwaitingPayment: an increase waits for the surcharge; seats are taken only when it is confirmed.</summary>
+public enum QuantityChangeStatus { AwaitingPayment, Applied, Cancelled }
+
+/// <summary>Audit of ticket-count changes on a paid order, with the money that has to move.</summary>
+public class QuantityChange
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid BookingId { get; set; }
+    public Booking Booking { get; set; } = null!;
+    public int OldQuantity { get; set; }
+    public int NewQuantity { get; set; }
+    /// <summary>Surcharge for an increase, refund for a decrease; always positive.</summary>
+    public decimal Amount { get; set; }
+    public QuantityChangeStatus Status { get; set; }
+    public DateTimeOffset RequestedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? RequestedByUserId { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string? CompletedByUserId { get; set; }
+    public Guid? RefundId { get; set; }
+    public Refund? Refund { get; set; }
+    public bool IsIncrease => NewQuantity > OldQuantity;
 }

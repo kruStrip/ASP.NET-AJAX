@@ -34,8 +34,11 @@ public sealed class SalesReport(AppDbContext db)
         var confirmed = bookings.Where(x => x.Status == BookingStatus.Confirmed);
         var orders = await confirmed.CountAsync(ct);
         var tickets = await confirmed.SumAsync(x => (int?)x.Quantity, ct) ?? 0;
-        var confirmedRevenue = await payments.Where(x => x.Booking.Status == BookingStatus.Confirmed)
-            .SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
+        // A reduced paid order keeps its payment, but money already returned for the reduction is not revenue.
+        var confirmedRevenue = (await payments.Where(x => x.Booking.Status == BookingStatus.Confirmed)
+            .SumAsync(x => (decimal?)x.Amount, ct) ?? 0)
+            - (await refunds.Where(x => x.Status == RefundStatus.Completed && x.Payment.Booking.Status == BookingStatus.Confirmed)
+                .SumAsync(x => (decimal?)x.Amount, ct) ?? 0);
         var gross = await payments.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
         var refunded = await refunds.Where(x => x.Status == RefundStatus.Completed).SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
         var pendingRefunds = refunds.Where(x => x.Status == RefundStatus.Pending);
