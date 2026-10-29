@@ -10,46 +10,63 @@
     <link rel="icon" href="~/img/favicon.png" asp-append-version="true" type="image/png" sizes="64x64" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-@{ var isStaff = User.IsInRole("Admin") || User.IsInRole("Manager"); }
-<body data-hub="@(isStaff ? "booking" : null)">
+@{
+    var isStaff = User.IsInRole("Admin") || User.IsInRole("Manager");
+    var isAdmin = User.IsInRole("Admin");
+    var signedIn = User.Identity?.IsAuthenticated == true;
+    var currentPage = ViewContext.RouteData.Values["page"] as string;
+    // A section stays highlighted on its own sub-pages (game card, sales history, assignments…).
+    string? Active(params string[] pages) =>
+        pages.Any(p => string.Equals(p, currentPage, StringComparison.OrdinalIgnoreCase)) ? "active" : null;
+    string? Current(params string[] pages) => Active(pages) is null ? null : "page";
+}
+<body data-hub="@(isStaff ? "booking" : null)" class="@(signedIn ? "with-sidebar" : null)">
+@if (signedIn)
+{
+<aside class="sidebar">
+    <a class="brand" asp-page="/Home"><img src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото — на главную" width="48" height="48" /></a>
+    <nav class="side-nav" aria-label="Основная навигация">
+        @if (isStaff)
+        {
+            <span class="side-group">Заявки</span>
+            <a asp-page="/Index" class="@Active("/Index")" aria-current="@Current("/Index")">Главная</a>
+            <a asp-page="/Bookings/Pending" class="@Active("/Bookings/Pending")" aria-current="@Current("/Bookings/Pending")">Подтверждение</a>
+            <a asp-page="/Bookings/Confirmed" class="@Active("/Bookings/Confirmed", "/Bookings/History")" aria-current="@Current("/Bookings/Confirmed", "/Bookings/History")">Покупки</a>
+            <a asp-page="/Bookings/Cancelled" class="@Active("/Bookings/Cancelled")" aria-current="@Current("/Bookings/Cancelled")">Отменённые</a>
+            @if (isAdmin) { <a asp-page="/Refunds/Index" class="@Active("/Refunds/Index")" aria-current="@Current("/Refunds/Index")">Возвраты</a> }
+
+            <span class="side-group">Мероприятия</span>
+            <a asp-page="/Events/Index" class="@Active("/Events/Index", "/Events/Details", "/Events/Edit", "/Events/Create")" aria-current="@Current("/Events/Index", "/Events/Details", "/Events/Edit", "/Events/Create")">Игры</a>
+            <a asp-page="/Events/Complete" class="@Active("/Events/Complete")" aria-current="@Current("/Events/Complete")">Завершить</a>
+
+            @if (isAdmin)
+            {
+                <span class="side-group">Управление</span>
+                <a asp-page="/Reports/Index" class="@Active("/Reports/Index")" aria-current="@Current("/Reports/Index")">Отчёт</a>
+                <a asp-page="/Staff/Index" class="@Active("/Staff/Index", "/Staff/Assignments")" aria-current="@Current("/Staff/Index", "/Staff/Assignments")">Сотрудники</a>
+            }
+        }
+        <span class="side-group">Аккаунт</span>
+        <a asp-page="/Bookings/Mine" class="@Active("/Bookings/Mine", "/Bookings/Edit")" aria-current="@Current("/Bookings/Mine", "/Bookings/Edit")">Мои заявки</a>
+        <a asp-page="/Account/ChangePassword" class="@Active("/Account/ChangePassword")" aria-current="@Current("/Account/ChangePassword")">Пароль</a>
+    </nav>
+    <div class="side-user">
+        @if (isStaff) { <span class="online" data-online-count hidden></span> }
+        <span class="user-name" title="Вы вошли как">@User.Identity!.Name</span>
+        <form method="post" asp-page="/Account/Logout"><button type="submit" class="small-button">Выйти</button></form>
+    </div>
+</aside>
+}
+else
+{
 <header class="topbar">
     <a class="brand" asp-page="/Home"><img src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото — на главную" width="48" height="48" /></a>
     <nav class="nav" aria-label="Основная навигация">
-        @if (User.Identity?.IsAuthenticated == true)
-        {
-            @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
-            {
-                <a asp-page="/Index">Главная</a>
-                <a asp-page="/Bookings/Pending">Подтверждение</a>
-                <a asp-page="/Bookings/Confirmed">Покупки</a>
-                <a asp-page="/Bookings/Cancelled">Отменённые</a>
-                @if (User.IsInRole("Admin")) { <a asp-page="/Refunds/Index">Возвраты</a> }
-                <a asp-page="/Events/Index">Игры</a>
-                <a asp-page="/Events/Complete">Завершить</a>
-                @if (User.IsInRole("Admin"))
-                {
-                    <a asp-page="/Reports/Index">Отчёт</a>
-                    <a asp-page="/Staff/Index">Сотрудники</a>
-                }
-            }
-            <a asp-page="/Bookings/Mine">Мои заявки</a>
-            <a asp-page="/Account/ChangePassword">Пароль</a>
-        }
-        else
-        {
-            <a asp-page="/Account/Login">Войти</a>
-            <a asp-page="/Account/Register">Регистрация</a>
-        }
+        <a asp-page="/Account/Login">Войти</a>
+        <a asp-page="/Account/Register">Регистрация</a>
     </nav>
-    @if (User.Identity?.IsAuthenticated == true)
-    {
-        <div class="user-box">
-            @if (isStaff) { <span class="online" data-online-count hidden></span> }
-            <span class="user-name" title="Вы вошли как">@User.Identity.Name</span>
-            <form method="post" asp-page="/Account/Logout"><button type="submit" class="small-button">Выйти</button></form>
-        </div>
-    }
 </header>
+}
 <main class="content">
     <div id="ajax-notice" class="alert" role="status" aria-live="polite" hidden></div>
     @if (TempData["Notice"] is string notice) { <div class="alert success">@notice</div> }
