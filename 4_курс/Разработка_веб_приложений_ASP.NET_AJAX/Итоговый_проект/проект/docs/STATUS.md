@@ -142,6 +142,7 @@
 
 - [x] https://muzloto.b-o-c-a.ru — Production, своя PostgreSQL, HTTPS (Let's Encrypt), ежедневные резервные копии.
 - [x] Проверено снаружи: TLS, заголовки безопасности, 401 без токена/ключа, вход и SignalR через nginx; сайт calendar не затронут.
+- [x] CI/CD: push в `main` → тесты → образ в GHCR → деплой с проверкой здоровья и автооткатом (`.github/workflows/muzloto.yml`, `deploy/ci-deploy.sh`). Первый автоматический деплой — коммит `5abdb10`, успешно.
 
 ## Дальше (план)
 
