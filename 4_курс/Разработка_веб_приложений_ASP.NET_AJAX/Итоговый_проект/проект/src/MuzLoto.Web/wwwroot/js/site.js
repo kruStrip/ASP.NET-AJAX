@@ -105,6 +105,18 @@
     field.value = out;
   });
 
+  // Booking form: choosing a date shows that game's card; the total follows the ticket count.
+  document.querySelectorAll('select[data-autosubmit]').forEach(select =>
+    select.addEventListener('change', () => select.form?.submit()));
+  document.querySelectorAll('select[data-price]').forEach(select => {
+    const target = document.querySelector(select.dataset.totalTarget);
+    const update = () => {
+      if (target) target.value = `${((Number(select.value) || 0) * Number(select.dataset.price)).toLocaleString('ru-RU')} ₽`;
+    };
+    select.addEventListener('change', update);
+    update();
+  });
+
   // Phones and tablets: the sidebar is a drawer. Without JS the #sidebar link still opens it via :target.
   const menuToggle = document.querySelector('.menu-toggle');
   if (menuToggle) {

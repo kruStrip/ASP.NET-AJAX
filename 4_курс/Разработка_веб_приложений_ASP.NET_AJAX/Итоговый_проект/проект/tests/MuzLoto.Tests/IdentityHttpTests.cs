@@ -25,6 +25,7 @@ public sealed class AppFactory : WebApplicationFactory<Program>
         // Uploaded covers go to a throwaway folder, never into the source tree.
         Environment.SetEnvironmentVariable("Storage__ImagesPath", ImagesPath);
         Environment.SetEnvironmentVariable("Integration__Secret", IntegrationSecret);
+        Environment.SetEnvironmentVariable("RateLimit__BookingFormPostsPerTenMinutes", "100000");
     }
 
     public const string IntegrationSecret = "test-integration-secret-0123456789";
@@ -131,7 +132,7 @@ public sealed class IdentityHttpTests(AppFactory app)
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/", response.Headers.Location?.OriginalString);
         var home = WebUtility.HtmlDecode(await client.GetStringAsync("/"));
-        Assert.Contains("Новый Игрок", home);
+        Assert.Contains("Запись на игру", home);                       // the booking form, now with the account menu
         Assert.Contains("Выйти", home);
 
         using var scope = app.Services.CreateScope();

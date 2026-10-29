@@ -15,7 +15,7 @@ namespace MuzLoto.Tests;
 public sealed class FormDesignerWebhookTests(AppFactory app)
 {
     private const string Url = "/api/integrations/formdesigner/webhook";
-    private static int dayOffset = Random.Shared.Next(0, 3000);
+    private static int dayOffset = Random.Shared.Next(0, 2_000_000); // wide range: the test database keeps earlier runs' sessions
 
     /// <summary>A unique far-future day per test so dates never collide with other tests' sessions.</summary>
     private static DateOnly NextDay() => new DateOnly(2035, 1, 1).AddDays(Interlocked.Add(ref dayOffset, 7));

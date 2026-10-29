@@ -1,0 +1,38 @@
+@page "/payment-settings"
+@model MuzLoto.Web.Pages.PaymentSettings.IndexModel
+@{ ViewData["Title"] = "Оплата"; }
+<div class="page-heading"><div><div class="eyebrow">Управление</div><h1>Оплата</h1>
+<p class="muted">Это видит клиент после кнопки «К оплате». Сумма подставляется сама: билеты × цена игры.</p></div></div>
+
+<section class="panel">
+    <h2>Текст для оплаты</h2>
+    <form method="post" asp-page-handler="Text" class="slot-form">
+        <label asp-for="Instructions">Например: номер для перевода, банк, получатель и куда прислать чек</label>
+        <textarea asp-for="Instructions" rows="6" maxlength="2000" placeholder="Перевод по номеру +7 900 000-00-00 (Сбербанк), получатель Иван И.&#10;После оплаты пришлите чек в Telegram @@username"></textarea>
+        <span asp-validation-for="Instructions" class="error-text"></span>
+        <div><button type="submit" class="button">Сохранить текст</button></div>
+    </form>
+</section>
+
+<section class="panel">
+    <h2>QR-код</h2>
+    <div class="booking-card slot-card">
+        <div class="slot-preview">
+            @if (Model.Settings.QrStorageKey is not null) { <img src="/oplata/qr?v=@Model.Settings.QrVersion" alt="QR-код для оплаты" /> }
+            else { <span class="muted">Нет QR-кода</span> }
+        </div>
+        <div class="slot-body">
+            <form method="post" asp-page-handler="Qr" enctype="multipart/form-data" class="slot-form">
+                <label for="qr">@(Model.Settings.QrStorageKey is null ? "Загрузить" : "Заменить") QR-код (JPEG, PNG, WebP, до 5 МБ)</label>
+                <input id="qr" type="file" name="image" accept="image/jpeg,image/png,image/webp" required />
+                <div><button type="submit" class="button">Сохранить QR-код</button></div>
+            </form>
+            @if (Model.Settings.QrStorageKey is not null)
+            {
+                <form method="post" asp-page-handler="DeleteQr">
+                    <button type="submit" class="small-button" data-confirm-button="Удалить QR-код?">Удалить QR-код</button>
+                </form>
+            }
+        </div>
+    </div>
+</section>

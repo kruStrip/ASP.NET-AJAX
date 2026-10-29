@@ -13,6 +13,7 @@ using MuzLoto.Web.Domain;
 using MuzLoto.Web.Hubs;
 using MuzLoto.Web.Services;
 using System.Text;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var connection = builder.Configuration.GetConnectionString("Default")
@@ -141,6 +142,7 @@ builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AuthorizeFolder("/");
     options.Conventions.AllowAnonymousToPage("/Home");
+    options.Conventions.AllowAnonymousToPage("/Pay");
     options.Conventions.AllowAnonymousToPage("/Account/Login");
     options.Conventions.AllowAnonymousToPage("/Account/Register");
     options.Conventions.AllowAnonymousToPage("/Account/Denied");
@@ -158,6 +160,20 @@ builder.Services.AddScoped<SessionCrud>();
 builder.Services.AddScoped<SalesReport>();
 builder.Services.AddScoped<CoverImages>();
 builder.Services.AddScoped<FormDesignerWebhook>();
+builder.Services.AddScoped<PublicSchedule>();
+builder.Services.AddSingleton<PaymentLinks>();
+
+// The public booking form is the only anonymous write: limit POSTs per client address against spam.
+var formPostsPerTenMinutes = builder.Configuration.GetValue("RateLimit:BookingFormPostsPerTenMinutes", 30);
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+        HttpMethods.IsPost(ctx.Request.Method) && ctx.Request.Path == "/"
+            ? RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = formPostsPerTenMinutes, Window = TimeSpan.FromMinutes(10) })
+            : RateLimitPartition.GetNoLimiter("other"));
+});
 builder.Services.AddScoped<JwtTokenService>();
 
 // Behind the server's nginx the app only sees http from the proxy; trust X-Forwarded-* so cookies, redirects
@@ -205,6 +221,7 @@ app.UseRequestLocalization("ru-RU");
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
@@ -220,14 +237,23 @@ app.MapGet("/i/{number:int:range(1,10)}", async (int number, CoverImages images,
         entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{number}-{file.Version}\""));
 }).AllowAnonymous();
 
-// Uploaded covers: staff only, cache-busted by ?v=version.
+// Game posters: public, the booking form shows them to every customer; cache-busted by ?v=version.
 app.MapGet("/images/{id:guid}", async (Guid id, CoverImages images, HttpContext http, CancellationToken ct) =>
 {
     var file = await images.OpenAsync(id, ct);
     if (file is null) return Results.NotFound();
-    http.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+    http.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
     return Results.File(file.Value.Path, file.Value.ContentType);
-}).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin,Manager" });
+}).AllowAnonymous();
+// QR code on the payment screen; revalidated so a replaced code shows at once.
+app.MapGet("/oplata/qr", async (CoverImages images, HttpContext http, CancellationToken ct) =>
+{
+    var file = await images.OpenPaymentQrAsync(ct);
+    if (file is null) return Results.NotFound();
+    http.Response.Headers.CacheControl = "no-cache";
+    return Results.File(file.Path, file.ContentType, lastModified: file.UpdatedAt,
+        entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"qr-{file.Version}\""));
+}).AllowAnonymous();
 app.MapRazorPages();
 app.MapControllers();
 app.MapHub<BookingHub>("/hubs/bookings");

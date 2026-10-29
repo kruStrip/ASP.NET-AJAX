@@ -1,0 +1,38 @@
+@page "/oplata/{token}"
+@model MuzLoto.Web.Pages.PayModel
+@using MuzLoto.Web.Domain
+@{ ViewData["Title"] = "Оплата"; var b = Model.Booking; var settings = Model.Settings; }
+<section class="panel booking-form">
+    <img class="booking-logo" src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото" width="200" height="200" />
+    @switch (b.Status)
+    {
+        case BookingStatus.Confirmed:
+            <h1 class="center">Оплата подтверждена</h1>
+            <p class="center">Ждём вас на игре!</p>
+            break;
+        case BookingStatus.Cancelled:
+            <h1 class="center">Заявка отменена</h1>
+            <p class="center">Если это ошибка, свяжитесь с нами.</p>
+            break;
+        default:
+            <h1 class="center">Заявка принята</h1>
+            break;
+    }
+    <dl class="review">
+        <div><dt>Название игры:</dt><dd>@b.GameSession.Game.Title</dd></div>
+        <div><dt>Дата игры:</dt><dd>@Model.LocalStart</dd></div>
+        <div><dt>Название команды:</dt><dd>@b.TeamName</dd></div>
+        <div><dt>Количество билетов:</dt><dd>@b.Quantity</dd></div>
+        <div><dt>Итого:</dt><dd>@Model.Total.ToString("#,0.##") ₽</dd></div>
+    </dl>
+    @if (b.Status == BookingStatus.Pending)
+    {
+        <h2 class="center">Оплата</h2>
+        <p class="center">Чтобы забронировать за вами время и дату, нужна оплата в размере <strong>@Model.Total.ToString("#,0.##") ₽</strong>
+            (@b.TicketPriceSnapshot.ToString("#,0.##") ₽ за каждого участника).</p>
+        @if (settings?.QrStorageKey is not null) { <img class="pay-qr" src="/oplata/qr?v=@settings.QrVersion" alt="QR-код для оплаты" /> }
+        @if (!string.IsNullOrWhiteSpace(settings?.Instructions)) { <p class="pay-text">@settings.Instructions</p> }
+        else if (settings?.QrStorageKey is null) { <p class="center">Реквизиты для оплаты пришлёт менеджер.</p> }
+        <p class="muted center">Бронь подтверждается после того, как менеджер проверит оплату. Сохраните эту страницу — по ссылке будет виден статус заявки.</p>
+    }
+</section>

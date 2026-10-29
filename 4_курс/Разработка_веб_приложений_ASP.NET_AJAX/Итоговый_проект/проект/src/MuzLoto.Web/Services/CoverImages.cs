@@ -83,6 +83,49 @@ public sealed class CoverImages(AppDbContext db, IConfiguration config, IWebHost
         if (file is not null) File.Delete(file);
     }
 
+    // ---- Payment QR code shown on the payment screen ----
+
+    public async Task SavePaymentQrAsync(IFormFile file, CancellationToken ct = default)
+    {
+        var extension = await CheckImageAsync(file, ct);
+        var settings = await PaymentSettingsAsync(ct);
+        var previous = settings.QrStorageKey is { } old ? FullPath(old) : null;
+        settings.QrVersion++;
+        settings.QrStorageKey = $"payment/qr-v{settings.QrVersion}{extension}";
+        settings.UpdatedAt = DateTimeOffset.UtcNow;
+        await WriteAsync(file, settings.QrStorageKey, ct);
+        var target = FullPath(settings.QrStorageKey);
+        try { await db.SaveChangesAsync(ct); }
+        catch { File.Delete(target); throw; }
+        if (previous is not null && previous != target) File.Delete(previous);
+    }
+
+    public async Task DeletePaymentQrAsync(CancellationToken ct = default)
+    {
+        var settings = await PaymentSettingsAsync(ct);
+        if (settings.QrStorageKey is not { } key) return;
+        settings.QrStorageKey = null;
+        settings.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        File.Delete(FullPath(key));
+    }
+
+    public async Task<SlotFile?> OpenPaymentQrAsync(CancellationToken ct = default)
+    {
+        var settings = await db.PaymentSettings.AsNoTracking().SingleOrDefaultAsync(ct);
+        if (settings?.QrStorageKey is not { } key) return null;
+        var path = FullPath(key);
+        return File.Exists(path) ? new SlotFile(path, ContentType(path), settings.QrVersion, settings.UpdatedAt) : null;
+    }
+
+    /// <summary>The single settings row, created on first use (tracked).</summary>
+    public async Task<PaymentSettings> PaymentSettingsAsync(CancellationToken ct = default)
+    {
+        var settings = await db.PaymentSettings.SingleOrDefaultAsync(ct);
+        if (settings is null) db.PaymentSettings.Add(settings = new PaymentSettings());
+        return settings;
+    }
+
     public sealed record SlotFile(string Path, string ContentType, int Version, DateTimeOffset UpdatedAt);
 
     /// <summary>The file behind a public link; static demo keys ("/img/…") are served from wwwroot.</summary>

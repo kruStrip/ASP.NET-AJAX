@@ -9,16 +9,20 @@ using Npgsql;
 namespace MuzLoto.Web.Services;
 
 /// <param name="ExternalSubmissionId">Idempotency key: FormDesigner submission ID or the API Idempotency-Key.</param>
-/// <param name="OwnerUserId">Account that created the booking via the API; null for FormDesigner.</param>
+/// <param name="OwnerUserId">Account that created the booking (site form or API); null for anonymous customers.</param>
+/// <param name="PrivacyConsentAt">When the customer accepted the personal-data policy in the site form.</param>
 public sealed record IncomingBooking(
     string ExternalSubmissionId, Guid GameSessionId, string TeamName,
     string CustomerName, string Phone, string? Telegram, int Quantity,
-    string Provider = BookingSources.FormDesigner, string? OwnerUserId = null);
+    string Provider = BookingSources.FormDesigner, string? OwnerUserId = null, DateTimeOffset? PrivacyConsentAt = null);
 
 public static class BookingSources
 {
+    /// <summary>Legacy FormDesigner webhook, kept while old links are still in use.</summary>
     public const string FormDesigner = "FormDesigner";
     public const string Api = "Api";
+    /// <summary>The site's own booking form on the home page.</summary>
+    public const string Web = "Web";
 }
 
 public sealed class BookingWorkflow(
@@ -38,7 +42,7 @@ public sealed class BookingWorkflow(
             string.IsNullOrWhiteSpace(input.CustomerName) || input.CustomerName.Length > 150 ||
             string.IsNullOrWhiteSpace(input.Phone) || input.Phone.Length > 40 ||
             input.Quantity < 1 || input.Quantity > (MaxPerBooking ?? int.MaxValue) ||
-            input.Provider is not (BookingSources.FormDesigner or BookingSources.Api))
+            input.Provider is not (BookingSources.FormDesigner or BookingSources.Api or BookingSources.Web))
             throw new BusinessException("Неверные данные заявки.", 400);
         if (input.Telegram?.Length > 100) throw new BusinessException("Слишком длинный Telegram.", 400);
 
@@ -54,7 +58,7 @@ public sealed class BookingWorkflow(
 
             var session = await db.GameSessions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == input.GameSessionId, ct)
                 ?? throw new BusinessException("Мероприятие не найдено.", 404);
-            if (session.CompletedAt.HasValue || !session.SalesOpen)
+            if (session.CompletedAt.HasValue || session.ArchivedAt.HasValue || !session.SalesOpen)
                 throw new BusinessException("Продажа на это мероприятие закрыта.");
             // Pending requests never reserve seats, so only paid bookings reduce what can be requested.
             var reserved = await db.Bookings
@@ -71,7 +75,8 @@ public sealed class BookingWorkflow(
                 GameSessionId = session.Id, TeamName = input.TeamName.Trim(),
                 CustomerName = input.CustomerName.Trim(), Phone = input.Phone.Trim(),
                 Telegram = input.Telegram?.Trim(), Quantity = input.Quantity,
-                TicketPriceSnapshot = session.TicketPrice, OwnerUserId = input.OwnerUserId
+                TicketPriceSnapshot = session.TicketPrice, OwnerUserId = input.OwnerUserId,
+                PrivacyConsentAt = input.PrivacyConsentAt
             };
             db.Bookings.Add(booking);
             db.ExternalSubmissions.Add(new ExternalSubmission

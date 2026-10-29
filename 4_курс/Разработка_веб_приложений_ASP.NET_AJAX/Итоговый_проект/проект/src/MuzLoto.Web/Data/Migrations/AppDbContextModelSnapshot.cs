@@ -258,6 +258,9 @@ namespace MuzLoto.Web.Data.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<DateTimeOffset?>("PrivacyConsentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
@@ -540,6 +543,33 @@ namespace MuzLoto.Web.Data.Migrations
                     b.HasIndex("ConfirmedByUserId");
 
                     b.ToTable("Payments");
+                });
+
+            modelBuilder.Entity("MuzLoto.Web.Domain.PaymentSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Instructions")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("QrStorageKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("QrVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PaymentSettings", t =>
+                        {
+                            t.HasCheckConstraint("CK_PaymentSettings_Singleton", "\"Id\" = 1");
+                        });
                 });
 
             modelBuilder.Entity("MuzLoto.Web.Domain.QuantityChange", b =>

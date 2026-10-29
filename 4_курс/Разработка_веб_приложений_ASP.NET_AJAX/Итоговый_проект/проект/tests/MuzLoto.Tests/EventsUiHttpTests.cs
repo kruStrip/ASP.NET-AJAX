@@ -131,7 +131,8 @@ public sealed class EventsUiHttpTests(AppFactory app)
         Assert.Equal(replaced.Id, (await DbAsync(db => db.GameImages.AsNoTracking().SingleAsync(x => x.GameSessionId == id))).Id);
         Assert.Contains($"/images/{replaced.Id}?v=2", await admin.GetStringAsync($"/events/{id}"));
 
-        Assert.Equal(HttpStatusCode.Redirect, (await app.Browser().GetAsync($"/images/{replaced.Id}")).StatusCode); // staff only
+        // Posters are public: the booking form on "/" shows them to every customer.
+        Assert.Equal(HttpStatusCode.OK, (await app.Browser().GetAsync($"/images/{replaced.Id}")).StatusCode);
     }
 
     [Fact]

@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<ExternalSubmission> ExternalSubmissions => Set<ExternalSubmission>();
     public DbSet<QuantityChange> QuantityChanges => Set<QuantityChange>();
     public DbSet<ImageSlot> ImageSlots => Set<ImageSlot>();
+    public DbSet<PaymentSettings> PaymentSettings => Set<PaymentSettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -94,6 +95,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.ToTable(t => t.HasCheckConstraint("CK_ImageSlots_Number", $"\"Number\" BETWEEN 1 AND {ImageSlot.Count}"));
             e.Property(x => x.StorageKey).HasMaxLength(500).IsRequired();
             e.Property(x => x.Note).HasMaxLength(100);
+        });
+        b.Entity<PaymentSettings>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.ToTable(t => t.HasCheckConstraint("CK_PaymentSettings_Singleton", $"\"Id\" = {Domain.PaymentSettings.SingletonId}"));
+            e.Property(x => x.Instructions).HasMaxLength(2000);
+            e.Property(x => x.QrStorageKey).HasMaxLength(500);
         });
         b.Entity<EventStaffAssignment>(e =>
         {

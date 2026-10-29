@@ -75,6 +75,8 @@ public class Booking
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ConfirmedAt { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
+    /// <summary>When the customer accepted the personal-data policy in the site's booking form (152-ФЗ).</summary>
+    public DateTimeOffset? PrivacyConsentAt { get; set; }
     public Payment? Payment { get; set; }
     public ICollection<BookingStatusHistory> StatusHistory { get; set; } = new List<BookingStatusHistory>();
     public ICollection<ExternalSubmission> ExternalSubmissions { get; set; } = new List<ExternalSubmission>();
@@ -185,4 +187,18 @@ public class ImageSlot
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     /// <summary>Staff note: what the picture is for, e.g. "05.11 — Хиты 2000-х".</summary>
     public string? Note { get; set; }
+}
+
+/// <summary>
+/// What the customer sees after «К оплате»: free text (transfer number, recipient, where to send the receipt)
+/// and an optional QR code. Kept in the database, edited by an admin: payment details never go into the repository.
+/// </summary>
+public class PaymentSettings
+{
+    public const int SingletonId = 1;
+    public int Id { get; set; } = SingletonId;
+    public string? Instructions { get; set; }
+    public string? QrStorageKey { get; set; }
+    public int QrVersion { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
