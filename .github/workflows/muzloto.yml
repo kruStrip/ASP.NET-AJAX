@@ -1,4 +1,4 @@
-name: MuzLoto build, tests and PostgreSQL smoke
+name: MuzLoto CI/CD
 on:
   push:
     paths:
@@ -89,3 +89,62 @@ jobs:
             http://127.0.0.1:5080/api/v2/events | grep -q '"items"'
           curl --fail --silent \
             http://127.0.0.1:5080/lib/signalr/signalr.min.js | grep -q 'signalR'
+
+  # CD: only after build + all tests passed, only for pushes to main (forks never get the secrets).
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://muzloto.b-o-c-a.ru
+    concurrency:
+      group: muzloto-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/krustrip/muzloto-web
+      DEPLOY_HOST: 185.244.51.134
+    defaults:
+      run:
+        working-directory: 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Deploy (forced-command SSH key, server pulls the image)
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The server's sshd drops some new connections under bot load: retry ssh's own failures (255).
+          for attempt in 1 2 3 4 5 6; do
+            ssh -i ~/.ssh/deploy -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=40 -o ServerAliveInterval=15 \
+              "root@$DEPLOY_HOST" "deploy $GITHUB_SHA" && exit 0 || rc=$?
+            [ "$rc" -eq 255 ] || exit "$rc"
+            echo "ssh dropped, retry $attempt"; sleep 10
+          done
+          exit 1
+      - name: Smoke test over HTTPS
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 https://muzloto.b-o-c-a.ru/health | grep -q ok
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://muzloto.b-o-c-a.ru/api/v1/bookings)" = 401

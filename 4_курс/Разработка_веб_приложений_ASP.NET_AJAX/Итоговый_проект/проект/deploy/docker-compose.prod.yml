@@ -22,7 +22,8 @@ services:
     networks: [internal]
 
   app:
-    image: muzloto-web:${MUZLOTO_TAG:-latest}
+    # Set by the deploy scripts in .env: ghcr.io/krustrip/muzloto-web (CI) or muzloto-web (manual deploy.sh).
+    image: ${MUZLOTO_IMAGE:-muzloto-web}:${MUZLOTO_TAG:-latest}
     restart: unless-stopped
     depends_on:
       db:

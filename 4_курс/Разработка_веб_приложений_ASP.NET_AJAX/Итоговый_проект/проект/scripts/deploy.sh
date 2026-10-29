@@ -70,7 +70,8 @@ fi
 REMOTE
 
 echo "==> Start"
-remote "cd '$REMOTE_DIR' && MUZLOTO_TAG='$TAG' docker compose up -d --remove-orphans && docker image prune -f >/dev/null"
+# Record the release in .env (as the CI deploy does) so a plain 'docker compose up' keeps this version.
+remote "cd '$REMOTE_DIR' && { grep -vE '^MUZLOTO_(IMAGE|TAG)=' .env; printf 'MUZLOTO_IMAGE=muzloto-web\nMUZLOTO_TAG=%s\n' '$TAG'; } > .env.new && chmod 600 .env.new && mv .env.new .env && docker compose up -d --remove-orphans && docker image prune -f >/dev/null"
 
 echo "==> Health (from the proxy network)"
 for i in $(seq 1 30); do
