@@ -6,13 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
     <title>@ViewData["Title"] — МузЛото</title>
-    <link rel="icon" href="~/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="~/img/logo.jpg" type="image/jpeg" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 @{ var isStaff = User.IsInRole("Admin") || User.IsInRole("Manager"); }
 <body data-hub="@(isStaff ? "booking" : null)">
 <header class="topbar">
-    <a class="brand" asp-page="/Home">МузЛото<span class="brand-point">.</span></a>
+    <a class="brand" asp-page="/Home"><img src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото — на главную" width="48" height="48" /></a>
     <nav class="nav" aria-label="Основная навигация">
         @if (User.Identity?.IsAuthenticated == true)
         {
