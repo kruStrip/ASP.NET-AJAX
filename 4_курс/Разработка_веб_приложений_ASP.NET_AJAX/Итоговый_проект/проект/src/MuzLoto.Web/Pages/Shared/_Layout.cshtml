@@ -23,7 +23,14 @@
 <body data-hub="@(isStaff ? "booking" : null)" class="@(signedIn ? "with-sidebar" : null)">
 @if (signedIn)
 {
-<aside class="sidebar">
+@* Phones and tablets: a top bar with a menu button; the sidebar slides in as a drawer (works without JS via #sidebar). *@
+<header class="mobile-bar">
+    <a href="#sidebar" class="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Открыть меню"><span></span><span></span><span></span></a>
+    <a class="brand" asp-page="/Home"><img src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото — на главную" width="40" height="40" /></a>
+    @if (isStaff) { <span class="online" data-online-count hidden></span> }
+</header>
+<aside class="sidebar" id="sidebar">
+    <a href="#" class="menu-close" aria-label="Закрыть меню">×</a>
     <a class="brand" asp-page="/Home"><img src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото — на главную" width="48" height="48" /></a>
     <nav class="side-nav" aria-label="Основная навигация">
         @if (isStaff)
@@ -56,6 +63,7 @@
         <form method="post" asp-page="/Account/Logout"><button type="submit" class="small-button">Выйти</button></form>
     </div>
 </aside>
+<a href="#" class="menu-backdrop" aria-hidden="true" tabindex="-1"></a>
 }
 else
 {
@@ -78,19 +86,6 @@ else
     @if (LinkRules.IsHttpUrl(Config["Legal:PrivacyPolicyUrl"])) { <a href="@Config["Legal:PrivacyPolicyUrl"]" target="_blank" rel="noopener noreferrer">Политика обработки персональных данных</a> }
     <span class="muted">Система мероприятий и продажи билетов</span>
 </footer>
-@if (User.Identity?.IsAuthenticated == true)
-{
-    @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
-    {
-    <nav class="bottom-nav" aria-label="Мобильное меню">
-        <a asp-page="/Bookings/Confirmed">Покупки</a>
-        <a asp-page="/Bookings/Pending">Ожидают</a>
-        <a asp-page="/Events/Index">Игры</a>
-        <a asp-page="/Events/Complete">Завершить</a>
-        @if (User.IsInRole("Admin")) { <a asp-page="/Staff/Index">Сотрудники</a> }
-    </nav>
-    }
-}
 <script src="~/lib/signalr/signalr.min.js" defer></script>
 <script src="~/js/site.js" asp-append-version="true" defer></script>
 @await RenderSectionAsync("Scripts", required: false)

@@ -77,6 +77,21 @@
     finally { if (button?.isConnected) button.disabled = false; }
   });
 
+  // Phones and tablets: the sidebar is a drawer. Without JS the #sidebar link still opens it via :target.
+  const menuToggle = document.querySelector('.menu-toggle');
+  if (menuToggle) {
+    const setMenu = open => {
+      document.body.classList.toggle('menu-open', open);
+      menuToggle.setAttribute('aria-expanded', String(open));
+      menuToggle.setAttribute('aria-label', open ? 'Закрыть меню' : 'Открыть меню');
+      if (!open && location.hash === '#sidebar') history.replaceState(null, '', location.pathname + location.search);
+    };
+    menuToggle.addEventListener('click', e => { e.preventDefault(); setMenu(!document.body.classList.contains('menu-open')); });
+    document.querySelectorAll('.menu-close, .menu-backdrop').forEach(el =>
+      el.addEventListener('click', e => { e.preventDefault(); setMenu(false); }));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(false); });
+  }
+
   // SignalR only runs when the self-hosted client is installed via scripts/install-client.sh.
   // Do not fall back to an external CDN: this app uses a strict same-origin CSP.
   // The layout marks staff pages with data-hub; the hub itself rejects everyone else.
@@ -98,11 +113,12 @@
     'RefundRequested', 'RefundCancelled', 'RefundCompleted']) {
     connection.on(eventName, () => { void refreshVisibleList(); });
   }
-  const online = document.querySelector('[data-online-count]');
+  // The counter appears in the sidebar and in the mobile top bar.
   connection.on('OnlineCountChanged', count => {
-    if (!online) return;
-    online.textContent = `Онлайн: ${count}`;
-    online.hidden = false;
+    document.querySelectorAll('[data-online-count]').forEach(online => {
+      online.textContent = `Онлайн: ${count}`;
+      online.hidden = false;
+    });
   });
   // The server took this connection out of a game group (assignment or role removed).
   connection.on('AccessRevoked', () => {
