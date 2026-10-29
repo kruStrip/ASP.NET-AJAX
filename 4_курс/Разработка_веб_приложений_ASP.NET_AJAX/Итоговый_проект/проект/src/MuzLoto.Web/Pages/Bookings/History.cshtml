@@ -9,7 +9,7 @@
 {
     var b = row.Booking;
     <article class="booking-card"><div>
-    <span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</span>
+    <span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.Format(b.GameSession.StartsAt, b.GameSession.TimeZoneId)</span>
     <h2>@b.TeamName</h2>
     <p>@b.CustomerName · @b.Quantity бил. · <a href="tel:@b.Phone">@b.Phone</a> · ID @b.Id.ToString()[..8]</p>
     <p>Оплачено <b>@row.Paid.ToString("N2") ₽</b>

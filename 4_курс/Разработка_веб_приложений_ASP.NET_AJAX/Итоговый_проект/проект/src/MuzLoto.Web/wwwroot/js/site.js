@@ -77,6 +77,21 @@
     finally { if (button?.isConnected) button.disabled = false; }
   });
 
+  // Date fields "14.10.2026 19:00": digits are typed, the dots, space and colon are inserted automatically.
+  document.addEventListener('input', event => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement) || !field.hasAttribute('data-datetime-mask')) return;
+    if (event.inputType && event.inputType.startsWith('delete')) return; // let backspace remove separators
+    const d = field.value.replace(/\D/g, '').slice(0, 12);
+    const parts = [d.slice(0, 2), d.slice(2, 4), d.slice(4, 8), d.slice(8, 10), d.slice(10, 12)];
+    let out = parts[0];
+    if (d.length > 2) out += '.' + parts[1];
+    if (d.length > 4) out += '.' + parts[2];
+    if (d.length > 8) out += ' ' + parts[3];
+    if (d.length > 10) out += ':' + parts[4];
+    field.value = out;
+  });
+
   // Phones and tablets: the sidebar is a drawer. Without JS the #sidebar link still opens it via :target.
   const menuToggle = document.querySelector('.menu-toggle');
   if (menuToggle) {

@@ -9,10 +9,10 @@
 @foreach (var b in Model.Bookings)
 {
 <article class="booking-card" data-session-id="@b.GameSessionId"><div>
-<span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</span>
+<span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.Format(b.GameSession.StartsAt, b.GameSession.TimeZoneId)</span>
 <h2>@b.TeamName</h2>
 <p>@b.CustomerName · @b.Quantity бил. · @((b.Quantity * b.TicketPriceSnapshot).ToString("N2")) ₽</p>
-<span class="status cancelled">Отменена @(b.CancelledAt.HasValue ? ScheduleTime.ToLocal(b.CancelledAt.Value, b.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm") : "—")</span>
+<span class="status cancelled">Отменена @(b.CancelledAt.HasValue ? ScheduleTime.Format(b.CancelledAt.Value, b.GameSession.TimeZoneId) : "—")</span>
 </div><div class="button-stack">
 <form method="post" asp-page-handler="Restore" data-ajax-action="booking-restore" data-confirm="Восстановить заявку? Для оплаченной заявки места будут заняты повторно, ожидающий возврат будет отменён, новый платёж не создаётся.">
 <input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Восстановить</button>

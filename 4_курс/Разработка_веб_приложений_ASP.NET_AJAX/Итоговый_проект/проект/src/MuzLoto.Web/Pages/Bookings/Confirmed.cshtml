@@ -8,7 +8,7 @@
 <div class="card-list" data-live-list>
 @foreach (var b in Model.Bookings)
 {
-<article class="booking-card" data-session-id="@b.GameSessionId"><div><span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.ToLocal(b.GameSession.StartsAt, b.GameSession.TimeZoneId).ToString("dd.MM HH:mm") (@b.GameSession.TimeZoneId)</span>
+<article class="booking-card" data-session-id="@b.GameSessionId"><div><span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.Format(b.GameSession.StartsAt, b.GameSession.TimeZoneId)</span>
 <h2>@b.TeamName</h2><p>@b.CustomerName · <b>@b.Quantity</b> бил. · <b>@((b.Quantity*b.TicketPriceSnapshot).ToString("N2"))</b> ₽</p>
 <p><a href="tel:@b.Phone">@b.Phone</a> @if (!string.IsNullOrWhiteSpace(b.Telegram)) { <span>· Telegram: @b.Telegram</span> }</p>
 <p class="muted">Свободно мест на игре: @Model.RemainingBySession.GetValueOrDefault(b.GameSessionId) · ID @b.Id.ToString()[..8]</p>

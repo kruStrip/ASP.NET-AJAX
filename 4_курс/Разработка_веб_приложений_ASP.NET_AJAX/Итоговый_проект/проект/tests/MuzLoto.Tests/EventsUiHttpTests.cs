@@ -20,8 +20,7 @@ public sealed class EventsUiHttpTests(AppFactory app)
         ["Input.Title"] = title,
         ["Input.Description1"] = "Первый абзац",
         ["Input.Description2"] = "<script>alert('XSS')</script>",
-        ["Input.LocalStart"] = DateTime.Today.AddDays(9).ToString("yyyy-MM-ddT19:00"),
-        ["Input.TimeZoneId"] = "Asia/Vladivostok",
+        ["Input.LocalStart"] = DateTime.Today.AddDays(9).ToString("dd.MM.yyyy 19:00"),
         ["Input.Venue"] = "Тестовый бар",
         ["Input.MapUrl"] = "https://2gis.ru/vladivostok",
         ["Input.DurationMinutes"] = "90",
@@ -60,6 +59,11 @@ public sealed class EventsUiHttpTests(AppFactory app)
         var id = IdFrom(created);
 
         var html = await admin.GetStringAsync($"/events/{id}");
+        var stored = await DbAsync(db => db.GameSessions.AsNoTracking().SingleAsync(x => x.Id == id));
+        Assert.Equal("Asia/Vladivostok", stored.TimeZoneId);                   // no time zone field: Vladivostok by default
+        Assert.Equal(new TimeSpan(9, 0, 0), stored.StartsAt.UtcDateTime.TimeOfDay);  // 19:00 in Vladivostok = 09:00 UTC
+        Assert.Contains(DateTime.Today.AddDays(9).ToString("dd.MM.yyyy") + " 19:00", html);
+        Assert.DoesNotContain("Asia/Vladivostok", html);
         Assert.DoesNotContain("<script>alert", html);                        // Razor encodes user text
         Assert.Contains("&lt;script&gt;", html);
         Assert.Contains("href=\"https://2gis.ru/vladivostok\"", html);
@@ -67,7 +71,7 @@ public sealed class EventsUiHttpTests(AppFactory app)
 
         var gameId = await DbAsync(db => db.GameSessions.Where(x => x.Id == id).Select(x => x.GameId).SingleAsync());
         var fields = GameFields("игнорируется");
-        fields["Input.LocalStart"] = DateTime.Today.AddDays(16).ToString("yyyy-MM-ddT19:00");
+        fields["Input.LocalStart"] = DateTime.Today.AddDays(16).ToString("dd.MM.yyyy 19:00");
         var second = await AppFactory.PostFormAsync(admin, $"/events/create?gameId={gameId}", fields);
         Assert.Equal(HttpStatusCode.Redirect, second.StatusCode);
         var secondId = IdFrom(second);
@@ -81,6 +85,8 @@ public sealed class EventsUiHttpTests(AppFactory app)
     [InlineData("Input.Title", "", "Укажите название игры")]
     [InlineData("Input.MapUrl", "javascript:alert(1)", "https://")]
     [InlineData("Input.Capacity", "0", "Мест: от 1")]
+    [InlineData("Input.LocalStart", "2026-10-14T19:00", "в формате 14.10.2026 19:00")]
+    [InlineData("Input.LocalStart", "31.02.2027 19:00", "в формате 14.10.2026 19:00")]
     public async Task CreateGame_InvalidInput_ShowsServerValidation(string field, string value, string message)
     {
         var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
@@ -119,7 +125,7 @@ public sealed class EventsUiHttpTests(AppFactory app)
 
         // Changing the date keeps the session ID, so the cover stays attached.
         var edit = GameFields("Обложка изменена");
-        edit["Input.LocalStart"] = DateTime.Today.AddDays(30).ToString("yyyy-MM-ddT20:00");
+        edit["Input.LocalStart"] = DateTime.Today.AddDays(30).ToString("dd.MM.yyyy 20:00");
         edit["SalesOpen"] = "true";
         Assert.Equal(HttpStatusCode.Redirect, (await AppFactory.PostFormAsync(admin, $"/events/{id}/edit", edit)).StatusCode);
         Assert.Equal(replaced.Id, (await DbAsync(db => db.GameImages.AsNoTracking().SingleAsync(x => x.GameSessionId == id))).Id);

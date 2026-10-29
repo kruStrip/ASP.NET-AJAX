@@ -14,7 +14,7 @@
   var booking = refund.Payment.Booking;
   <article class="booking-card" data-session-id="@booking.GameSessionId">
     <div>
-      <span class="eyebrow">@booking.GameSession.Game.Title — @ScheduleTime.ToLocal(booking.GameSession.StartsAt, booking.GameSession.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</span>
+      <span class="eyebrow">@booking.GameSession.Game.Title — @ScheduleTime.Format(booking.GameSession.StartsAt, booking.GameSession.TimeZoneId)</span>
       <h2>@booking.TeamName · @refund.Amount.ToString("N2") ₽</h2>
       <p class="muted">@(refund.Kind == RefundKind.QuantityDecrease ? "Частичный возврат: уменьшено количество билетов, заказ остаётся оплаченным" : "Возврат за отменённый заказ")</p>
       <p>@booking.CustomerName · @booking.Quantity бил. · <a href="tel:@booking.Phone">@booking.Phone</a></p>
@@ -40,7 +40,7 @@
     <div><h2>@booking.TeamName — @refund.Amount.ToString("N2") ₽</h2>
       <p class="muted">@(refund.Kind == RefundKind.QuantityDecrease ? "Частичный (уменьшение количества)" : "Отмена заказа")</p>
       <p>@booking.CustomerName · @booking.GameSession.Game.Title</p>
-      <p class="muted">Возврат подтверждён: @(refund.CompletedAt?.ToString("dd.MM.yyyy HH:mm") ?? "—") (UTC)</p>
+      <p class="muted">Возврат подтверждён: @(refund.CompletedAt is { } done ? ScheduleTime.Format(done, booking.GameSession.TimeZoneId) : "—")</p>
       @if (!string.IsNullOrWhiteSpace(refund.TransferReference)) { <p class="muted">Примечание: @refund.TransferReference</p> }
     </div><span class="status confirmed">Деньги возвращены</span>
   </article>

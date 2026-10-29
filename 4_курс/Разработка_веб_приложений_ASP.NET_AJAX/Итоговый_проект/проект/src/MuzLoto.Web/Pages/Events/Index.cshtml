@@ -18,7 +18,7 @@
     <article class="booking-card" data-session-id="@s.Id">
     <div class="card-main">
     @if (row.CoverUrl is not null) { <img class="thumb" src="@row.CoverUrl" alt="" loading="lazy" /> }
-    <div><span class="eyebrow">@ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId).ToString("dd.MM.yyyy HH:mm") (@s.TimeZoneId)</span><h2><a asp-page="/Events/Details" asp-route-id="@s.Id">@s.Game.Title</a></h2>
+    <div><span class="eyebrow">@ScheduleTime.Format(s.StartsAt, s.TimeZoneId)</span><h2><a asp-page="/Events/Details" asp-route-id="@s.Id">@s.Game.Title</a></h2>
     <p class="muted">@s.Venue · @s.TicketPrice.ToString("N0") ₽ / билет · @(s.AgeLimit)+</p>
     <p>Продано: <b>@row.Reserved</b> / @s.Capacity · Осталось: <b>@row.Remaining</b></p>
     <span class="status @(s.ArchivedAt.HasValue || s.CompletedAt.HasValue ? "cancelled" : s.SalesOpen ? "confirmed" : "pending")">@(s.ArchivedAt.HasValue ? "В архиве" : s.CompletedAt.HasValue ? "Игра прошла" : s.SalesOpen ? "Продажа открыта" : "Продажа закрыта")</span></div>

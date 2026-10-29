@@ -30,13 +30,14 @@ public class EditModel(AppDbContext db) : PageModel
 
     public async Task<IActionResult> OnPostAsync(Guid id, CancellationToken ct)
     {
-        var startsAt = Input.Validate(ModelState, requireTitle: true);
         try
         {
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             var s = await db.GameSessions.Include(x => x.Game).FirstOrDefaultAsync(x => x.Id == id, ct);
             if (s is null) return NotFound();
             await DescribeAsync(s, ct);
+            // The date is typed in the session's own zone, which is kept as is.
+            var startsAt = Input.Validate(ModelState, requireTitle: true, s.TimeZoneId);
             if (!ModelState.IsValid) return Page();
             if (s.CompletedAt.HasValue || s.ArchivedAt.HasValue)
             {

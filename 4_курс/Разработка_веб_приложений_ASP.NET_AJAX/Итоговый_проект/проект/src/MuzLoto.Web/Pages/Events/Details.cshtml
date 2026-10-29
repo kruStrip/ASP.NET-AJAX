@@ -1,7 +1,7 @@
 @page "/events/{id:guid}"
 @model MuzLoto.Web.Pages.Events.DetailsModel
-@{ var s = Model.Session; ViewData["Title"] = s.Game.Title; var local = ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId); }
-<div class="page-heading"><div><div class="eyebrow">@local.ToString("dd.MM.yyyy HH:mm") (@s.TimeZoneId)</div><h1>@s.Game.Title</h1>
+@{ var s = Model.Session; ViewData["Title"] = s.Game.Title; }
+<div class="page-heading"><div><div class="eyebrow">@ScheduleTime.Format(s.StartsAt, s.TimeZoneId)</div><h1>@s.Game.Title</h1>
 <span class="status @(s.ArchivedAt.HasValue || s.CompletedAt.HasValue ? "cancelled" : s.SalesOpen ? "confirmed" : "pending")">@(s.ArchivedAt.HasValue ? "В архиве" : s.CompletedAt.HasValue ? "Игра прошла" : s.SalesOpen ? "Продажа открыта" : "Продажа закрыта")</span></div>
 @if (Model.IsAdmin)
 {
@@ -39,7 +39,7 @@
 @if (Model.OtherDates.Count > 0)
 {
     <section class="panel"><h2>Другие даты этой игры</h2>
-    <ul>@foreach (var d in Model.OtherDates) { <li><a asp-page="/Events/Details" asp-route-id="@d.Id">@ScheduleTime.ToLocal(d.StartsAt, d.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</a> — @d.Venue @(d.ArchivedAt.HasValue ? "(архив)" : d.CompletedAt.HasValue ? "(прошла)" : "")</li> }</ul>
+    <ul>@foreach (var d in Model.OtherDates) { <li><a asp-page="/Events/Details" asp-route-id="@d.Id">@ScheduleTime.Format(d.StartsAt, d.TimeZoneId)</a> — @d.Venue @(d.ArchivedAt.HasValue ? "(архив)" : d.CompletedAt.HasValue ? "(прошла)" : "")</li> }</ul>
     </section>
 }
 

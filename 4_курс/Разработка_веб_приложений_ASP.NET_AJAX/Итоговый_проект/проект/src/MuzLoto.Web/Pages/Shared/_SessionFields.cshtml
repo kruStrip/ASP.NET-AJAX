@@ -12,8 +12,7 @@
     <label asp-for="Description5">Описание, абзац 5</label><textarea asp-for="Description5" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description5" class="error-text"></span>
 }
 <h2>Дата проведения</h2>
-<label asp-for="LocalStart">Местные дата и время</label><input asp-for="LocalStart" asp-format="{0:yyyy-MM-ddTHH:mm}" type="datetime-local" /><span asp-validation-for="LocalStart" class="error-text"></span>
-<label asp-for="TimeZoneId">Часовой пояс (IANA)</label><input asp-for="TimeZoneId" placeholder="Asia/Vladivostok" /><span asp-validation-for="TimeZoneId" class="error-text"></span>
+<label asp-for="LocalStart">Дата и время (Владивосток)</label><input asp-for="LocalStart" placeholder="14.10.2026 19:00" inputmode="numeric" autocomplete="off" maxlength="16" data-datetime-mask /><span asp-validation-for="LocalStart" class="error-text"></span>
 <label asp-for="Venue">Место проведения</label><input asp-for="Venue" /><span asp-validation-for="Venue" class="error-text"></span>
 <label asp-for="MapUrl">Ссылка на 2ГИС</label><input asp-for="MapUrl" type="url" placeholder="https://2gis.ru/..." /><span asp-validation-for="MapUrl" class="error-text"></span>
 <label asp-for="DurationMinutes">Продолжительность, минут</label><input asp-for="DurationMinutes" type="number" min="1" max="1440" /><span asp-validation-for="DurationMinutes" class="error-text"></span>

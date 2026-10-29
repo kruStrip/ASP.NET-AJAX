@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using MuzLoto.Web.Data;
 using MuzLoto.Web.Domain;
+using MuzLoto.Web.Services;
 
 namespace MuzLoto.Web.Pages.Events;
 
@@ -26,7 +27,7 @@ public class CreateModel(AppDbContext db) : PageModel
         {
             // Prefill venue, price and capacity from the latest date; only the date has to change.
             Input = SessionForm.From<SessionForm>(latest);
-            Input.LocalStart = Input.LocalStart.AddDays(7);
+            Input.LocalStart = ScheduleTime.Format(ScheduleTime.ToLocal(latest.StartsAt, latest.TimeZoneId).AddDays(7));
         }
         return Page();
     }
@@ -41,7 +42,7 @@ public class CreateModel(AppDbContext db) : PageModel
             foreach (var key in ModelState.Keys.Where(k => k.StartsWith("Input.Title") || k.StartsWith("Input.Description")).ToList())
                 ModelState.Remove(key);
         }
-        var startsAt = Input.Validate(ModelState, requireTitle: ExistingGame is null);
+        var startsAt = Input.Validate(ModelState, requireTitle: ExistingGame is null, ScheduleTime.DefaultTimeZone);
         if (!ModelState.IsValid) return Page();
 
         var game = ExistingGame;
@@ -51,7 +52,7 @@ public class CreateModel(AppDbContext db) : PageModel
             Input.ApplyToGame(game);
             db.Games.Add(game);
         }
-        var session = new GameSession { Game = game };
+        var session = new GameSession { Game = game, TimeZoneId = ScheduleTime.DefaultTimeZone };
         Input.ApplyToSession(session, startsAt);
         db.GameSessions.Add(session);
         await db.SaveChangesAsync(ct);

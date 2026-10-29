@@ -16,8 +16,9 @@ public class SessionForm
     [StringLength(1000)] public string? Description4 { get; set; }
     [StringLength(1000)] public string? Description5 { get; set; }
 
-    [Required(ErrorMessage = "Укажите дату и время.")] public DateTime LocalStart { get; set; } = DateTime.Today.AddDays(7).AddHours(19);
-    [Required(ErrorMessage = "Укажите часовой пояс.")] public string TimeZoneId { get; set; } = "Asia/Vladivostok";
+    /// <summary>Local date and time of the game as typed: 14.10.2026 19:00 (the time zone is not edited in the UI).</summary>
+    [Required(ErrorMessage = "Укажите дату и время.")]
+    public string LocalStart { get; set; } = ScheduleTime.Format(DateTime.Today.AddDays(7).AddHours(19));
     [Required(ErrorMessage = "Укажите место проведения."), StringLength(250)] public string Venue { get; set; } = string.Empty;
     [StringLength(500)] public string? MapUrl { get; set; }
     [Range(1, 1440, ErrorMessage = "Продолжительность: от 1 до 1440 минут.")] public int DurationMinutes { get; set; } = 150;
@@ -29,16 +30,23 @@ public class SessionForm
         .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).ToArray();
 
     /// <summary>Server-side checks that Data Annotations cannot express; returns the start time in UTC.</summary>
-    public DateTimeOffset Validate(ModelStateDictionary modelState, bool requireTitle)
+    /// <param name="timeZoneId">Zone the date is typed in: the default for new dates, the session's own when editing.</param>
+    public DateTimeOffset Validate(ModelStateDictionary modelState, bool requireTitle, string timeZoneId)
     {
         if (requireTitle && string.IsNullOrWhiteSpace(Title))
             modelState.AddModelError("Input.Title", "Укажите название игры.");
         if (!string.IsNullOrWhiteSpace(MapUrl) && !LinkRules.IsHttpUrl(MapUrl))
             modelState.AddModelError("Input.MapUrl", "Ссылка должна начинаться с https:// (например, ссылка 2ГИС).");
-        try { return ScheduleTime.ToUtc(LocalStart, TimeZoneId); }
+        if (!ScheduleTime.TryParseLocal(LocalStart, out var local))
+        {
+            if (!string.IsNullOrWhiteSpace(LocalStart))
+                modelState.AddModelError("Input.LocalStart", "Укажите дату и время в формате 14.10.2026 19:00.");
+            return default;
+        }
+        try { return ScheduleTime.ToUtc(local, timeZoneId); }
         catch (Exception ex) when (ex is ArgumentException or TimeZoneNotFoundException or InvalidTimeZoneException)
         {
-            modelState.AddModelError("Input.LocalStart", "Проверьте дату и часовой пояс (IANA, например Asia/Vladivostok).");
+            modelState.AddModelError("Input.LocalStart", "Такого времени в этот день нет — проверьте дату и время.");
             return default;
         }
     }
@@ -54,7 +62,6 @@ public class SessionForm
     public void ApplyToSession(GameSession s, DateTimeOffset startsAtUtc)
     {
         s.StartsAt = startsAtUtc;
-        s.TimeZoneId = TimeZoneId.Trim();
         s.Venue = Venue.Trim();
         s.MapUrl = string.IsNullOrWhiteSpace(MapUrl) ? null : MapUrl.Trim();
         s.DurationMinutes = DurationMinutes;
@@ -67,7 +74,7 @@ public class SessionForm
     {
         Title = s.Game.Title, Description1 = s.Game.Description1, Description2 = s.Game.Description2,
         Description3 = s.Game.Description3, Description4 = s.Game.Description4, Description5 = s.Game.Description5,
-        LocalStart = ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId), TimeZoneId = s.TimeZoneId, Venue = s.Venue,
+        LocalStart = ScheduleTime.Format(s.StartsAt, s.TimeZoneId), Venue = s.Venue,
         MapUrl = s.MapUrl, DurationMinutes = s.DurationMinutes, AgeLimit = s.AgeLimit,
         TicketPrice = s.TicketPrice, Capacity = s.Capacity
     };

@@ -6,7 +6,7 @@
 <div class="card-list" data-live-list>
 @foreach (var s in Model.Sessions)
 {
-<article class="booking-card" data-session-id="@s.Id"><div><h2>@s.Game.Title</h2><p class="muted">@ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId).ToString("dd.MM.yyyy HH:mm") (@s.TimeZoneId) — @s.Venue</p>
+<article class="booking-card" data-session-id="@s.Id"><div><h2>@s.Game.Title</h2><p class="muted">@ScheduleTime.Format(s.StartsAt, s.TimeZoneId) — @s.Venue</p>
 @if (s.CompletedAt.HasValue) { <span class="status cancelled">Завершено</span> }</div>
 @if (!s.CompletedAt.HasValue)
 {
