@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -51,6 +52,11 @@ builder.Services.ConfigureApplicationCookie(o =>
         return Task.CompletedTask;
     };
 });
+// Keys that encrypt auth cookies and antiforgery tokens survive restarts: without this every restart logs everyone out.
+builder.Services.AddDataProtection()
+    .SetApplicationName("MuzLoto")
+    .PersistKeysToFileSystem(new DirectoryInfo(builder.Configuration["DataProtection:KeysPath"]
+        ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "keys")));
 builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.Zero);
 // Identity's cookie remains the default for Razor Pages. API controllers explicitly use JWT.
 var jwtKey = JwtTokenService.RequireSigningKey(builder.Configuration);

@@ -1,91 +1,91 @@
-# МузЛото — информационная система мероприятий
+# МузЛото — система мероприятий и продажи билетов
 
-**Текущее состояние: этап 8c.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
-Сборка, unit- и интеграционные тесты на PostgreSQL проходят в GitHub Actions. Подробный статус — [docs/STATUS.md](docs/STATUS.md),
-изменения ТЗ — [docs/DECISIONS.md](docs/DECISIONS.md).
+Веб-приложение для компании, проводящей музыкальные игры. Заменяет Google Sheets: расписание игр, учёт мест без
+перепродажи, ручное подтверждение оплат, возвраты, роли сотрудников, отчёты и обновления в реальном времени.
+Клиенты по-прежнему оформляют заявки в форме FormDesigner.
 
-## Что реализовано
+**Стек:** ASP.NET Core 8 · Razor Pages · AJAX (Fetch) · REST API + JWT · SignalR · EF Core 8 + PostgreSQL 16 · ASP.NET Core Identity.
 
-- Регистрация (`/account/register`, роль User), вход, выход (POST), смена пароля, блокировка на 15 минут после 5 ошибок.
-- Роли Admin / Manager / User; сотрудники и назначения менеджеров на игры (`/staff`).
-- Игры и сеансы, заявки «Нужно подтвердить», подтверждение оплаты (SERIALIZABLE, без перепродажи), отмена и восстановление в течение часа.
-- Завершение игры: неоплаченные заявки удаляются, оплаченные сохраняются. Ручные возвраты и чистая выручка.
-- «Мои заявки» (`/bookings/mine`) — только заявки текущего пользователя; изменение неоплаченной заявки по политике `CanEditBooking`.
-- Демо-данные в Development: игры, сеансы, заявки, платежи, возвраты (вымышленные).
-- REST API с JWT (`POST /api/auth/login`): мероприятия `api/v1|v2/events` (полный CRUD), заявки `api/v1/bookings` (пользователь — только свои), отчёт `api/v1/reports/summary`; Swagger v1/v2 на `/swagger` в Development, все запросы — в [requests/MuzLoto-API.http](requests/MuzLoto-API.http).
-- AJAX-действия с частичным обновлением, SignalR-уведомления по группам игр с переподключением, счётчик сотрудников онлайн, мгновенный отзыв доступа к группе.
+Главные правила: **заявка не занимает места до подтверждения оплаты сотрудником**; подтверждение атомарно проверяет
+остаток (без перепродажи при одновременной работе); при завершении игры неоплаченные заявки удаляются, оплаченные
+остаются в истории.
 
-## Учётные данные для локальной разработки
+## Быстрый старт
 
-| Роль | E-mail | Пароль |
-|---|---|---|
-| Admin (seed) | `admin@muzloto.local` | `Admin2026!` |
-| Manager (демо) | `manager1@muzloto.local`, `manager2@muzloto.local` | `Manager2026!` |
-| User (демо) | `user@muzloto.local` | `User2026!` |
-
-Создаётся только в окружении Development (`appsettings.Development.json`); вне Development этот пароль запрещён.
-Если в `.env` заданы `MUZLOTO_ADMIN_EMAIL` и `MUZLOTO_ADMIN_PASSWORD`, используются они.
-Обычного пользователя можно зарегистрировать на `/account/register`.
-
-## Локальный запуск
+Нужны .NET SDK 8, Docker, Node.js (для браузерного клиента SignalR).
 
 ```bash
-cp .env.example .env
-# Поменяйте все значения REPLACE_...
-docker compose up -d postgres
-bash scripts/init-db.sh
-bash scripts/install-client.sh
-bash scripts/dev.sh
+cp .env.example .env              # заполните значения REPLACE_...
+docker compose up -d postgres     # PostgreSQL на 127.0.0.1:5432
+bash scripts/init-db.sh           # dotnet ef database update — все таблицы из миграций
+bash scripts/install-client.sh    # копирует signalr.min.js в wwwroot/lib (без CDN — строгий CSP)
+bash scripts/dev.sh               # http://localhost:5080, окружение Development
 ```
 
-Открыть `http://localhost:5080/`. Swagger: `http://localhost:5080/swagger` (`scripts/dev.sh` запускает Development).
+- Приложение: <http://localhost:5080/> · Swagger: <http://localhost:5080/swagger> (документы v1 и v2, кнопка Authorize для JWT).
+- База разворачивается одной командой `dotnet ef database update` (её выполняет `init-db.sh`); при старте приложение
+  тоже применяет недостающие миграции.
+- При первом запуске в Development создаются роли, администратор и вымышленные демо-данные (3–5 записей в каждой таблице).
 
-Посмотреть [HTTP-примеры](requests/MuzLoto-API.http), [статус модулей](docs/STATUS.md) и [предположения по FormDesigner](docs/FORMDESIGNER.md).
+## Учётные записи (только локальная разработка)
 
-После генерации initial migrations файлы `src/MuzLoto.Web/Data/Migrations/*.cs` нужно закоммитить. Для реальных данных необходимы тесты, проверка поставщика формы, HTTPS и аудит безопасности.
+| Роль | E-mail | Пароль | Что может |
+|---|---|---|---|
+| Admin | `admin@muzloto.local` | `Admin2026!` | всё: игры, сотрудники, возвраты, отчёты |
+| Manager | `manager1@muzloto.local`, `manager2@muzloto.local` | `Manager2026!` | заявки и продажи только назначенных игр |
+| User | `user@muzloto.local` | `User2026!` | свои заявки (`/bookings/mine`, API) |
 
-## Этап 3
+Учётные записи создаются только в окружении Development; пароль администратора вне Development запрещён кодом.
+Если в `.env` заданы `MUZLOTO_ADMIN_EMAIL` и `MUZLOTO_ADMIN_PASSWORD`, используется этот администратор.
+Новых пользователей можно зарегистрировать на `/account/register` (роль User).
 
-[Что перенесено из старого Google Apps Script](docs/LEGACY_GOOGLE_SHEETS.md) · [Проверка и ограничения этапа 3](docs/STAGE3.md).
+## Возможности
 
+**Сотрудникам (Razor Pages + AJAX + SignalR)**
+- «Нужно подтвердить», «Покупки», «Отменённые» — подтверждение оплаты, отмена, восстановление в течение часа,
+  изменение количества (для оплаченных заказов — частичный возврат или ожидание доплаты); поиск по телефону в любом
+  формате, команде, имени, ID. Всё без перезагрузки, другие сотрудники видят изменения сразу.
+- «Игры» — полная карточка (5 абзацев описания, 2ГИС, продолжительность, возраст, обложка), несколько дат одной игры,
+  архив, поиск и фильтры; «Завершить» — закрытие продаж и удаление неоплаченных заявок.
+- «Возвраты» — фиксация фактического перевода денег; «Отчёт» — сводка, продажи по играм и датам за период,
+  оперативный отчёт; «История продаж» — все оплаченные заказы за всё время.
+- «Сотрудники» (Admin) — учётные записи, роли, назначение менеджеров на игры; отзыв назначения сразу закрывает доступ
+  к живым обновлениям этой игры.
 
-## Этап 4 — финансовые возвраты
+**REST API (JWT)** — `POST /api/auth/login`; `api/v1|v2/events` (полный CRUD, две версии контракта);
+`api/v1/bookings` (пользователь видит и меняет только свои заявки); `api/v1/reports/summary|by-game|by-date|operational`.
+Запросы ко всем эндпоинтам — [requests/MuzLoto-API.http](requests/MuzLoto-API.http).
 
-При отмене оплаченного заказа создаётся запрос `Refund (Pending)`, а билеты освобождаются сразу.
-Администратор отмечает реальное перечисление в [разделе «Возвраты»](/refunds).
-В отчёте: валовые платежи, подтверждённые возвраты и чистые поступления.
-Пока возврат не подтверждён, заказ можно восстановить в течение часа. После возврата — только новое бронирование и новая оплата.
-Перед запуском новой версии **обязательно** выполните `bash scripts/init-db.sh` для создания и применения миграции `RefundWorkflow`.
-Подробности: [docs/STAGE4.md](docs/STAGE4.md).
+**Интеграция** — `POST /api/integrations/formdesigner/submissions` с секретом `X-Integration-Key` и защитой от
+повторной доставки. Реальный формат и способ доставки заявок FormDesigner ещё не проверены — см. [docs/FORMDESIGNER.md](docs/FORMDESIGNER.md).
 
-## Этап 5: сотрудники
+## Безопасность
 
-В интерфейсе администратора добавлен раздел [«Сотрудники»](/staff): создание Admin/Manager/User, смена роли, назначение Manager на конкретные игры. Пользователь может сменить пароль по `/account/change-password`. Документация: [docs/STAGE5.md](docs/STAGE5.md).
+Identity (пароль от 6 символов с цифрой, блокировка после 5 ошибок на 15 минут) · роли Admin/Manager/User ·
+resource-based политики `CanViewBooking`, `CanEditBooking`, `CanManageBooking` через `IAuthorizationService` ·
+cookie для страниц, JWT (30 минут, проверка security stamp) для API · глобальный `AutoValidateAntiforgeryToken`,
+токен AJAX в заголовке `X-CSRF-TOKEN` · CSP без inline-скриптов и стилей, `X-Content-Type-Options`, `X-Frame-Options`,
+`Referrer-Policy`, HSTS вне Development · ключи Data Protection сохраняются между перезапусками.
 
-## Этап 6a: регистрация и собственные заявки
+## Тесты
 
-Регистрация, публичная главная, `/bookings/mine`, `POST /api/auth/login`, 403 для запрещённых страниц, HTTP-тесты. После обновления выполните `bash scripts/init-db.sh` (миграция `BookingOwner`). Подробнее: [docs/STAGE6A.md](docs/STAGE6A.md).
+```bash
+dotnet test tests/MuzLoto.Tests/MuzLoto.Tests.csproj --filter 'Category!=Integration'   # unit
+# интеграционные: отдельная пустая БД PostgreSQL (не muzloto_dev!)
+MUZLOTO_PG_TEST=1 ConnectionStrings__Default='Host=localhost;Database=muzloto_test;Username=muzloto;Password=...' \
+Jwt__Key="$(openssl rand -hex 48)" dotnet test tests/MuzLoto.Tests/MuzLoto.Tests.csproj
+```
 
-## Этап 6b: политики доступа, CSRF, демо-данные
+HTTP-тесты поднимают приложение целиком (`WebApplicationFactory`): регистрация и блокировка, 401/403, CSRF (400 без
+заголовка), API с настоящими JWT, политики владельца, SignalR-подключения с группами и отзывом доступа, одновременное
+подтверждение последних мест, XSS, отчёты. GitHub Actions выполняет сборку, тесты на временном PostgreSQL и HTTP smoke.
 
-Политики `CanEditBooking` / `CanManageBooking`, CSRF в заголовке `X-CSRF-TOKEN`, демо-данные в Development. Клиентская форма остаётся в FormDesigner. Подробнее: [docs/STAGE6B.md](docs/STAGE6B.md).
+## Документация
 
-## Этап 6c: SignalR
+- [docs/DEFENSE.md](docs/DEFENSE.md) — сценарий демонстрации и ответы на вопросы защиты.
+- [docs/STATUS.md](docs/STATUS.md) — что сделано и проверено по этапам, что осталось.
+- [docs/DECISIONS.md](docs/DECISIONS.md) — уточнения к ТЗ, принятые по ходу разработки.
+- `docs/STAGE*.md` — подробности каждого этапа; [docs/architecture.md](docs/architecture.md); [docs/LEGACY_GOOGLE_SHEETS.md](docs/LEGACY_GOOGLE_SHEETS.md).
 
-Обработчики подключения и отключения, учёт подключений, счётчик «Онлайн», отзыв групп при снятии назначения или смене роли, повторная проверка прав при переподключении. Подробнее: [docs/STAGE6C.md](docs/STAGE6C.md).
-
-## Этап 7: полный REST API
-
-Мероприятия v1/v2 (`remainingTickets`, `mapUrl` в v2), заявки с владельцем из токена, сводка продаж, Swagger с двумя версиями и описаниями. Подробнее: [docs/STAGE7.md](docs/STAGE7.md).
-
-## Этап 8a: карточка игры
-
-Полная карточка игры и несколько дат одной игры, обложки, архив, поиск и фильтры. После обновления: `bash scripts/init-db.sh` (миграция `SessionArchive`). Подробнее: [docs/STAGE8A.md](docs/STAGE8A.md).
-
-## Этап 8b: заявки
-
-Изменение количества (частичный возврат или доплата для оплаченных заказов), поиск заявок, история продаж, автоматический повтор транзакций при одновременной работе. После обновления: `bash scripts/init-db.sh` (миграция `PaidQuantityChanges`). Подробнее: [docs/STAGE8B.md](docs/STAGE8B.md).
-
-## Этап 8c: отчёты
-
-Продажи по играм и по датам с выбором периода, оперативный отчёт по будущим играм; те же данные в API. Подробнее: [docs/STAGE8C.md](docs/STAGE8C.md).
+Перед работой с реальными персональными данными и оплатами нужны: проверка интеграции FormDesigner, HTTPS,
+резервные копии БД и хранение секретов вне `.env` на сервере.

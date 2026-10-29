@@ -100,9 +100,28 @@ public static class DemoDataSeeder
         Book(sessions[0], "Меломаны", 4);
         Book(sessions[1], "Громкие соседи", 6, player.Id);
         Book(sessions[2], "Тихий час", 3);
-        Confirm(Book(sessions[0], "Звёзды караоке", 5));
-        Confirm(Book(sessions[1], "Басы и барабаны", 8));
-        Confirm(Book(sessions[2], "Фонограмма", 4, player.Id));
+        var stars = Book(sessions[0], "Звёзды караоке", 5);
+        Confirm(stars);
+        var drums = Book(sessions[1], "Басы и барабаны", 8);
+        Confirm(drums);
+        var playback = Book(sessions[2], "Фонограмма", 4, player.Id);
+        Confirm(playback);
+
+        // Ticket-count changes on paid orders: one reduced (partial refund waiting), one waiting for a surcharge,
+        // one surcharge that was dropped.
+        var partialRefund = new Refund { Payment = drums.Payment!, Amount = 2 * drums.TicketPriceSnapshot,
+            Kind = RefundKind.QuantityDecrease, RequestedAt = now.AddHours(-5), RequestedByUserId = admin?.Id };
+        db.Refunds.Add(partialRefund);
+        db.QuantityChanges.AddRange(
+            new QuantityChange { Booking = drums, OldQuantity = 8, NewQuantity = 6, Amount = partialRefund.Amount,
+                Status = QuantityChangeStatus.Applied, RequestedAt = now.AddHours(-5), RequestedByUserId = admin?.Id,
+                CompletedAt = now.AddHours(-5), CompletedByUserId = admin?.Id, Refund = partialRefund },
+            new QuantityChange { Booking = stars, OldQuantity = 5, NewQuantity = 7, Amount = 2 * stars.TicketPriceSnapshot,
+                Status = QuantityChangeStatus.AwaitingPayment, RequestedAt = now.AddHours(-2), RequestedByUserId = admin?.Id },
+            new QuantityChange { Booking = playback, OldQuantity = 4, NewQuantity = 5, Amount = playback.TicketPriceSnapshot,
+                Status = QuantityChangeStatus.Cancelled, RequestedAt = now.AddHours(-3), RequestedByUserId = admin?.Id,
+                CompletedAt = now.AddHours(-1), CompletedByUserId = admin?.Id });
+        drums.Quantity = 6;
         CancelPaid(Book(sessions[0], "Опоздавшие", 2), RefundStatus.Pending);
         CancelPaid(Book(sessions[3], "Передумавшие", 3), RefundStatus.Completed);
         CancelPaid(Book(sessions[4], "Вернёмся позже", 2), RefundStatus.Pending);
