@@ -177,3 +177,15 @@ Authorization: Bearer {{managerToken}}
 ### Пользователь -> 403
 GET {{base}}/api/v1/reports/summary
 Authorization: Bearer {{userToken}}
+
+### Продажи по играм за период (по дате проведения)
+GET {{base}}/api/v1/reports/by-game?from=2026-11-01&to=2026-11-30
+Authorization: Bearer {{adminToken}}
+
+### Продажи по датам сеансов
+GET {{base}}/api/v1/reports/by-date
+Authorization: Bearer {{managerToken}}
+
+### Оперативный отчёт: будущие игры, свободные места, неоплаченные заявки
+GET {{base}}/api/v1/reports/operational
+Authorization: Bearer {{adminToken}}

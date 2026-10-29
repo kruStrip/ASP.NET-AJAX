@@ -20,3 +20,9 @@ textarea{width:100%;background:var(--surface);color:var(--text);border:1px solid
 .card-main{display:flex;gap:16px;align-items:flex-start;min-width:0}
 .online{white-space:nowrap}
 @media(max-width:720px){.card-main .thumb{display:none}}
+.table-wrap{overflow-x:auto}
+.table{width:100%;border-collapse:collapse;font-size:14px}
+.table th,.table td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+.table td:first-child,.table th:first-child{white-space:normal}
+.table thead th{color:var(--muted);font-weight:600}
+.table tfoot th{border-bottom:none}

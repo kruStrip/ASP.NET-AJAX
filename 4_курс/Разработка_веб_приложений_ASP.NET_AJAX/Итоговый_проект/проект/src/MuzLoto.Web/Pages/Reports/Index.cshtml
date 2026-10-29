@@ -1,7 +1,8 @@
 @page "/reports"
 @model MuzLoto.Web.Pages.Reports.IndexModel
 @{ ViewData["Title"] = "Отчёт"; var s = Model.Summary; }
-<div class="page-heading"><div><div class="eyebrow">Аналитика продаж</div><h1>Отчёт</h1></div></div>
+<div class="page-heading"><div><div class="eyebrow">Аналитика продаж</div><h1>Отчёт</h1><p class="muted">Итоги ниже — за всё время.</p></div>
+<a class="button secondary" asp-page="/Bookings/History">История продаж</a></div>
 <div class="stats">
 <div class="stat"><span>Продано билетов</span><strong>@s.TicketsSold</strong></div>
 <div class="stat"><span>Подтверждённых заказов</span><strong>@s.ConfirmedOrders</strong></div>
@@ -18,5 +19,45 @@
 <div class="stat"><span>Чистые поступления</span><strong>@s.NetRevenue.ToString("N2") ₽</strong></div>
 <div class="stat"><span>Ожидают возврата</span><strong>@s.PendingRefundsCount</strong><p class="muted">@s.PendingRefundAmount.ToString("N2") ₽</p></div>
 </div>
+<h2>Продажи по играм и датам</h2>
+<form method="get" class="filters">
+    <label>С <input asp-for="From" type="date" /></label>
+    <label>по <input asp-for="To" type="date" /></label>
+    <button class="button secondary" type="submit">Показать</button>
+    @if (Model.From is not null || Model.To is not null) { <a class="button secondary" asp-page="/Reports/Index">За всё время</a> }
+</form>
+<p class="muted">Период — по дате проведения игры. Выручка — подтверждённые оплаты за вычетом выполненных возвратов.</p>
+<section class="panel table-wrap"><h3>По играм</h3>
+<table class="table"><thead><tr><th>Игра</th><th>Билетов</th><th>Выручка</th><th>Заказов</th></tr></thead><tbody>
+@foreach (var row in Model.ByGame)
+{
+    <tr><td>@row.Title</td><td>@row.Tickets</td><td>@row.Revenue.ToString("N2") ₽</td><td>@row.Orders</td></tr>
+}
+@if (Model.ByGame.Count == 0) { <tr><td colspan="4" class="muted">Продаж за период нет.</td></tr> }
+</tbody>
+@if (Model.ByGame.Count > 0)
+{
+    <tfoot><tr><th>Итого</th><th>@Model.ByGame.Sum(x => x.Tickets)</th><th>@Model.ByGame.Sum(x => x.Revenue).ToString("N2") ₽</th><th>@Model.ByGame.Sum(x => x.Orders)</th></tr></tfoot>
+}
+</table></section>
+<section class="panel table-wrap"><h3>По датам</h3>
+<table class="table"><thead><tr><th>Дата сеанса</th><th>Игра</th><th>Билетов</th><th>Выручка</th><th>Заказов</th></tr></thead><tbody>
+@foreach (var row in Model.ByDate)
+{
+    <tr><td><a asp-page="/Events/Details" asp-route-id="@row.SessionId">@row.Date.ToString("dd.MM.yyyy HH:mm")</a></td><td>@row.Title</td><td>@row.Tickets</td><td>@row.Revenue.ToString("N2") ₽</td><td>@row.Orders</td></tr>
+}
+@if (Model.ByDate.Count == 0) { <tr><td colspan="5" class="muted">Продаж за период нет.</td></tr> }
+</tbody></table></section>
+<h2>Оперативный отчёт</h2>
+<section class="panel table-wrap"><p class="muted">Будущие игры: свободные места и неоплаченные заявки (они места не занимают).</p>
+<table class="table"><thead><tr><th>Дата</th><th>Игра</th><th>Продано</th><th>Свободно</th><th>Ждут оплаты</th><th>Продажи</th></tr></thead><tbody>
+@foreach (var row in Model.Operational)
+{
+    <tr><td><a asp-page="/Events/Details" asp-route-id="@row.SessionId">@row.Date.ToString("dd.MM.yyyy HH:mm")</a></td><td>@row.Title</td>
+    <td>@row.Sold / @row.Capacity</td><td>@row.Remaining</td><td>@row.PendingRequests (@row.PendingTickets бил.)</td><td>@(row.SalesOpen ? "открыты" : "закрыты")</td></tr>
+}
+@if (Model.Operational.Count == 0) { <tr><td colspan="6" class="muted">Будущих игр нет.</td></tr> }
+</tbody></table></section>
+<h2>Как считается</h2>
 <p class="muted">Неоплаченные заявки продажами не считаются. Сумма поступлений уменьшается <strong>только после подтверждения фактического денежного возврата</strong> в разделе
 <a asp-page="/Refunds/Index">«Возвраты»</a>. Отмена бронирования сразу освобождает билеты, но не означает, что перевод выполнен.</p>
