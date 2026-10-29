@@ -37,10 +37,17 @@ docker build -t "muzloto-web:$TAG" -t muzloto-web:latest "$ROOT"
 echo "==> Upload image ($(docker image inspect muzloto-web:latest --format '{{.Size}}' | numfmt --to=iec))"
 IMAGE_FILE="$(mktemp --suffix=.tar.gz)"; trap 'rm -f "$IMAGE_FILE"' EXIT
 docker save "muzloto-web:$TAG" muzloto-web:latest | gzip -1 > "$IMAGE_FILE"
-remote_file "$IMAGE_FILE" 'gunzip | docker load'
+remote "mkdir -p '$REMOTE_DIR/backups'"
+# Long uploads get cut by the network: rsync resumes a partial file instead of starting over,
+# and its delta transfer sends only what changed since the previous deployment.
+for attempt in $(seq 1 15); do
+  rsync -e "ssh ${SSH_OPTS[*]}" --partial --timeout=60 -q "$IMAGE_FILE" "$HOST:$REMOTE_DIR/image.tar.gz" && break
+  [[ $attempt -lt 15 ]] || { echo "Upload failed" >&2; exit 1; }
+  echo "   (upload interrupted, resuming $attempt)" >&2; sleep 5
+done
+remote "gunzip -c '$REMOTE_DIR/image.tar.gz' | docker load >/dev/null"
 
 echo "==> Upload compose file"
-remote "mkdir -p '$REMOTE_DIR/backups'"
 remote_file "$ROOT/deploy/docker-compose.prod.yml" "cat > '$REMOTE_DIR/docker-compose.yml'"
 
 echo "==> Secrets (.env is created on the server once and never leaves it)"
