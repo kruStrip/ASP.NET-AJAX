@@ -482,6 +482,34 @@ namespace MuzLoto.Web.Data.Migrations
                     b.ToTable("GameSessions");
                 });
 
+            modelBuilder.Entity("MuzLoto.Web.Domain.ImageSlot", b =>
+                {
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Number");
+
+                    b.ToTable("ImageSlots", t =>
+                        {
+                            t.HasCheckConstraint("CK_ImageSlots_Number", "\"Number\" BETWEEN 1 AND 10");
+                        });
+                });
+
             modelBuilder.Entity("MuzLoto.Web.Domain.Payment", b =>
                 {
                     b.Property<Guid>("Id")
