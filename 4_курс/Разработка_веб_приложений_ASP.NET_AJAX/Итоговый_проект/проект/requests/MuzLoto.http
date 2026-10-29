@@ -19,3 +19,9 @@ X-Integration-Key: {{integrationKey}}
   "telegram": "test_example",
   "quantity": 2
 }
+
+### FormDesigner webhook: поля как в настройках модуля WebHooks (значения — в формате формы)
+POST {{url}}/api/integrations/formdesigner/webhook
+Content-Type: application/x-www-form-urlencoded
+
+key={{integrationKey}}&submission_id=test-002&game_date=01.11.2026&game_time=19:00&game_name=Хиты 2000-х&quantity=2&name=Тестовый клиент&phone=8 (900) 000-00-00&telegram=@test_example&team=Команда Звук&total=1400 р

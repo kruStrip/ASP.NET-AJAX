@@ -56,8 +56,9 @@ bash scripts/dev.sh               # http://localhost:5080, окружение De
 `api/v1/bookings` (пользователь видит и меняет только свои заявки); `api/v1/reports/summary|by-game|by-date|operational`.
 Запросы ко всем эндпоинтам — [requests/MuzLoto-API.http](requests/MuzLoto-API.http).
 
-**Интеграция** — `POST /api/integrations/formdesigner/submissions` с секретом `X-Integration-Key` и защитой от
-повторной доставки. Реальный формат и способ доставки заявок FormDesigner ещё не проверены — см. [docs/FORMDESIGNER.md](docs/FORMDESIGNER.md).
+**Интеграция с FormDesigner** — вебхук `/api/integrations/formdesigner/webhook`: заявка из формы сразу появляется
+у сотрудников; игра определяется по дате и времени, повторная доставка не создаёт дубль. Пошаговая настройка —
+[docs/FORMDESIGNER.md](docs/FORMDESIGNER.md) (нужен публичный HTTPS-адрес).
 
 ## Безопасность
 

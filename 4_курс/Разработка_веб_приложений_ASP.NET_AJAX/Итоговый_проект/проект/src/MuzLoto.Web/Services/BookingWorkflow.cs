@@ -60,7 +60,10 @@ public sealed class BookingWorkflow(
             var reserved = await db.Bookings
                 .Where(x => x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed)
                 .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
-            if (input.Quantity > session.Capacity - reserved)
+            // A FormDesigner customer has already been told the request was sent: never drop it for lack of seats.
+            // Requests hold no seats; staff resolve the shortfall when confirming payment.
+            var limit = provider == BookingSources.FormDesigner ? session.Capacity : session.Capacity - reserved;
+            if (input.Quantity > limit)
                 throw new BusinessException($"Свободных билетов меньше, чем запрошено: осталось {Math.Max(0, session.Capacity - reserved)}.");
 
             booking = new Booking

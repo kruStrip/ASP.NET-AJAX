@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -131,7 +132,11 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 // CSRF: every unsafe cookie-authenticated request needs a token; AJAX sends it in X-CSRF-TOKEN.
-builder.Services.AddAntiforgery(o => o.HeaderName = "X-CSRF-TOKEN");
+builder.Services.AddAntiforgery(o =>
+{
+    o.HeaderName = "X-CSRF-TOKEN";
+    o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; // Secure over HTTPS (incl. behind the proxy)
+});
 builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AuthorizeFolder("/");
@@ -152,9 +157,23 @@ builder.Services.AddScoped<StaffManagement>();
 builder.Services.AddScoped<SessionCrud>();
 builder.Services.AddScoped<SalesReport>();
 builder.Services.AddScoped<CoverImages>();
+builder.Services.AddScoped<FormDesignerWebhook>();
 builder.Services.AddScoped<JwtTokenService>();
 
+// Behind the server's nginx the app only sees http from the proxy; trust X-Forwarded-* so cookies, redirects
+// and links use https. Enabled by configuration on the server only: the container port is reachable solely
+// from the proxy's docker network, so any proxy address there is trusted.
+var behindProxy = builder.Configuration.GetValue("ForwardedHeaders:Enabled", false);
+if (behindProxy)
+    builder.Services.Configure<ForwardedHeadersOptions>(o =>
+    {
+        o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        o.KnownNetworks.Clear();
+        o.KnownProxies.Clear();
+    });
+
 var app = builder.Build();
+if (behindProxy) app.UseForwardedHeaders();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/App_Data/
+tests/
+.env
+.env.*
+*.md
+docs/
+requests/

@@ -1,0 +1,53 @@
+# МузЛото on the shared server. Secrets come from deploy/.env on the server (never committed).
+# The app joins the existing reverse proxy network (calendar's nginx) under the alias "muzloto-app";
+# the database is reachable only from the app.
+name: muzloto
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: muzloto
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: muzloto
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=30"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U muzloto -d muzloto"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 192m
+    networks: [internal]
+
+  app:
+    image: muzloto-web:${MUZLOTO_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=muzloto;Username=muzloto;Password=${POSTGRES_PASSWORD}
+      Jwt__Key: ${MUZLOTO_JWT_KEY:?set in .env}
+      Integration__Secret: ${MUZLOTO_INTEGRATION_SECRET:?set in .env}
+      BootstrapAdmin__Email: ${MUZLOTO_ADMIN_EMAIL:?set in .env}
+      BootstrapAdmin__Password: ${MUZLOTO_ADMIN_PASSWORD:?set in .env}
+      ForwardedHeaders__Enabled: "true"
+    volumes:
+      - appdata:/data
+    mem_limit: 320m
+    networks:
+      internal: {}
+      proxy:
+        aliases: [muzloto-app]
+
+volumes:
+  pgdata:
+  appdata:
+
+networks:
+  internal: {}
+  proxy:
+    external: true
+    name: deploy_calendar-network
