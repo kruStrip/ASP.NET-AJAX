@@ -111,7 +111,7 @@ public sealed class BookingPolicyHttpTests(AppFactory app)
         var client = app.Browser();
         var login = await client.PostAsJsonAsync("/api/auth/login", new { email = admin.Email, password = "Secret123" });
         var token = (await login.Content.ReadFromJsonAsync<Dictionary<string, object>>())!["accessToken"].ToString();
-        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/sessions/{Guid.NewGuid()}");
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/events/{Guid.NewGuid()}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         Assert.Equal(HttpStatusCode.NotFound, (await client.SendAsync(request)).StatusCode);
     }

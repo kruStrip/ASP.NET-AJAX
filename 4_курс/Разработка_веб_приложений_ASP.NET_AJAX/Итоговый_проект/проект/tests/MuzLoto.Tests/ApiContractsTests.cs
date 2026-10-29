@@ -10,7 +10,7 @@ public class ApiContractsTests
     [Fact]
     public void V2Write_MapsNestedLocationAndSeats()
     {
-        var request = new SessionsV2Controller.WriteDto
+        var request = new EventsV2Controller.WriteDto
         {
             GameId = Guid.NewGuid(), StartsAt = new DateTimeOffset(2026, 11, 12, 19, 0, 0, TimeSpan.FromHours(3)),
             Location = new() { Name = "Зал", TimeZone = "Europe/Moscow" },

@@ -9,13 +9,13 @@ namespace MuzLoto.Web.Services;
 public sealed record SessionWrite(
     Guid GameId, DateTimeOffset StartsAt, string TimeZoneId, string Venue,
     int Capacity, decimal TicketPrice, int DurationMinutes, int AgeLimit,
-    bool SalesOpen);
+    bool SalesOpen, string? MapUrl = null, bool SetMapUrl = false);
 
 public sealed record SessionSnapshot(
     Guid Id, Guid GameId, string GameTitle, DateTimeOffset StartsAt,
     string TimeZoneId, string Venue, int Capacity, int Reserved,
     decimal TicketPrice, int DurationMinutes, int AgeLimit, bool SalesOpen,
-    bool Completed);
+    bool Completed, string? MapUrl);
 
 public sealed class SessionCrud(AppDbContext db)
 {
@@ -85,9 +85,8 @@ public sealed class SessionCrud(AppDbContext db)
         Update(session, input);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        // New game information must be resolved after changing GameId.
-        db.Entry(session).Reference(x => x.Game).IsLoaded = false;
-        await db.Entry(session).Reference(x => x.Game).LoadAsync(ct);
+        // GameId may have changed: point the navigation at the game it now references.
+        session.Game = await db.Games.SingleAsync(x => x.Id == session.GameId, ct);
         return Map(session, reserved);
     }
 
@@ -114,7 +113,7 @@ public sealed class SessionCrud(AppDbContext db)
     private static SessionSnapshot Map(GameSession s, int reserved) => new(
         s.Id, s.GameId, s.Game.Title, s.StartsAt, s.TimeZoneId, s.Venue,
         s.Capacity, reserved, s.TicketPrice, s.DurationMinutes, s.AgeLimit, s.SalesOpen,
-        s.CompletedAt.HasValue);
+        s.CompletedAt.HasValue, s.MapUrl);
 
     private static void Update(GameSession s, SessionWrite input)
     {
@@ -127,6 +126,8 @@ public sealed class SessionCrud(AppDbContext db)
         s.DurationMinutes = input.DurationMinutes;
         s.AgeLimit = input.AgeLimit;
         s.SalesOpen = input.SalesOpen;
+        // v1 has no mapUrl field: its PUT keeps the stored link instead of erasing it.
+        if (input.SetMapUrl) s.MapUrl = string.IsNullOrWhiteSpace(input.MapUrl) ? null : input.MapUrl.Trim();
     }
     private static void Validate(SessionWrite i)
     {
@@ -136,6 +137,9 @@ public sealed class SessionCrud(AppDbContext db)
             i.DurationMinutes is < 1 or > 1_440 || i.AgeLimit is < 0 or > 21 ||
             i.StartsAt == default)
             throw new BusinessException("Некорректные параметры сеанса.", 400);
+        if (!string.IsNullOrWhiteSpace(i.MapUrl) && (i.MapUrl.Length > 500 ||
+            !Uri.TryCreate(i.MapUrl.Trim(), UriKind.Absolute, out var map) || map.Scheme is not ("http" or "https")))
+            throw new BusinessException("Ссылка на карту должна быть адресом http(s).", 400);
         try { _ = TimeZoneInfo.FindSystemTimeZoneById(i.TimeZoneId); }
         catch (TimeZoneNotFoundException) { throw new BusinessException("Неизвестный часовой пояс.", 400); }
         catch (InvalidTimeZoneException) { throw new BusinessException("Некорректный часовой пояс.", 400); }

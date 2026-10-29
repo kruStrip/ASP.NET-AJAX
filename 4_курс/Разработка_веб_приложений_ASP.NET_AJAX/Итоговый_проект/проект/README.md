@@ -1,6 +1,6 @@
 # МузЛото — информационная система мероприятий
 
-**Текущее состояние: этап 6c.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
+**Текущее состояние: этап 7.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
 Сборка, unit- и интеграционные тесты на PostgreSQL проходят в GitHub Actions. Подробный статус — [docs/STATUS.md](docs/STATUS.md),
 изменения ТЗ — [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -12,7 +12,7 @@
 - Завершение игры: неоплаченные заявки удаляются, оплаченные сохраняются. Ручные возвраты и чистая выручка.
 - «Мои заявки» (`/bookings/mine`) — только заявки текущего пользователя; изменение неоплаченной заявки по политике `CanEditBooking`.
 - Демо-данные в Development: игры, сеансы, заявки, платежи, возвраты (вымышленные).
-- JWT `POST /api/auth/login`, REST CRUD сеансов `api/v1/sessions` и `api/v2/sessions`, Swagger `/swagger` в Development.
+- REST API с JWT (`POST /api/auth/login`): мероприятия `api/v1|v2/events` (полный CRUD), заявки `api/v1/bookings` (пользователь — только свои), отчёт `api/v1/reports/summary`; Swagger v1/v2 на `/swagger` в Development, все запросы — в [requests/MuzLoto-API.http](requests/MuzLoto-API.http).
 - AJAX-действия с частичным обновлением, SignalR-уведомления по группам игр с переподключением, счётчик сотрудников онлайн, мгновенный отзыв доступа к группе.
 
 ## Учётные данные для локальной разработки
@@ -73,3 +73,7 @@ bash scripts/dev.sh
 ## Этап 6c: SignalR
 
 Обработчики подключения и отключения, учёт подключений, счётчик «Онлайн», отзыв групп при снятии назначения или смене роли, повторная проверка прав при переподключении. Подробнее: [docs/STAGE6C.md](docs/STAGE6C.md).
+
+## Этап 7: полный REST API
+
+Мероприятия v1/v2 (`remainingTickets`, `mapUrl` в v2), заявки с владельцем из токена, сводка продаж, Swagger с двумя версиями и описаниями. Подробнее: [docs/STAGE7.md](docs/STAGE7.md).

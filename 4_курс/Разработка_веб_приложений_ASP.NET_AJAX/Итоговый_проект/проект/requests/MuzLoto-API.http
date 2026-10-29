@@ -1,64 +1,179 @@
+# МузЛото REST API — запросы ко всем эндпоинтам (VS Code REST Client / JetBrains HTTP Client).
+# Запуск: bash scripts/dev.sh (Development, демо-данные). Учётные записи — в README.
 @base = http://localhost:5080
-@token = {{login.response.body.accessToken}}
-@sessionId = 00000000-0000-0000-0000-000000000000
-@gameId = 00000000-0000-0000-0000-000000000000
+@adminToken = {{loginAdmin.response.body.accessToken}}
+@managerToken = {{loginManager.response.body.accessToken}}
+@userToken = {{loginUser.response.body.accessToken}}
+@eventId = {{eventsV2.response.body.items[0].id}}
+@gameId = {{eventsV2.response.body.items[0].gameId}}
+@createdEventId = {{createEvent.response.body.id}}
+@bookingId = {{createBooking.response.body.id}}
 
-### JWT login (Development admin from appsettings.Development.json)
-# @name login
+########## Аутентификация (JWT, срок жизни 30 минут)
+
+# @name loginAdmin
 POST {{base}}/api/auth/login
 Content-Type: application/json
 
 {"email":"admin@muzloto.local","password":"Admin2026!"}
 
-### Without token -> 401
-GET {{base}}/api/v1/sessions
-
-### Registered User token -> 403 on staff API (register at /account/register first)
+###
+# @name loginManager
 POST {{base}}/api/auth/login
 Content-Type: application/json
 
-{"email":"REPLACE_WITH_REGISTERED_USER_EMAIL","password":"REPLACE_WITH_PASSWORD"}
+{"email":"manager1@muzloto.local","password":"Manager2026!"}
 
-### v1 list
-GET {{base}}/api/v1/sessions
-Authorization: Bearer {{token}}
+###
+# @name loginUser
+POST {{base}}/api/auth/login
+Content-Type: application/json
 
-### v2 list & search (different response structure)
-GET {{base}}/api/v2/sessions?page=1&pageSize=20&search=
-Authorization: Bearer {{token}}
+{"email":"user@muzloto.local","password":"User2026!"}
 
-### v2 create (Admin only; first create a game in the Razor admin UI)
-POST {{base}}/api/v2/sessions
-Authorization: Bearer {{token}}
+### Неверный пароль -> 401
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{"email":"user@muzloto.local","password":"wrong-1"}
+
+########## Мероприятия v1 (плоский контракт)
+
+### Без токена -> 401
+GET {{base}}/api/v1/events
+
+### Список (админ — все, менеджер — назначенные)
+GET {{base}}/api/v1/events?page=1&pageSize=20
+Authorization: Bearer {{adminToken}}
+
+### Обычный пользователь на API мероприятий -> 403
+GET {{base}}/api/v1/events
+Authorization: Bearer {{userToken}}
+
+########## Мероприятия v2 (location/availability, remainingTickets, mapUrl, поиск)
+
+# @name eventsV2
+GET {{base}}/api/v2/events?page=1&pageSize=20&search=
+Authorization: Bearer {{adminToken}}
+
+### Одно мероприятие v1 и v2 — сравнить контракты
+GET {{base}}/api/v1/events/{{eventId}}
+Authorization: Bearer {{adminToken}}
+
+###
+GET {{base}}/api/v2/events/{{eventId}}
+Authorization: Bearer {{adminToken}}
+
+### Создание (Admin) -> 201 + Location
+# @name createEvent
+POST {{base}}/api/v2/events
+Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 {
   "gameId": "{{gameId}}",
-  "startsAt": "2026-11-12T19:00:00+03:00",
-  "location": { "name": "Пример площадки", "timeZone": "Europe/Moscow" },
-  "seats": { "total": 80 },
-  "ticketPrice": 1500,
-  "durationMinutes": 120,
-  "ageLimit": 12,
-  "salesOpen": true
+  "startsAt": "2026-12-12T19:00:00+10:00",
+  "location": { "name": "Демо-бар «Пластинка»", "timeZone": "Asia/Vladivostok" },
+  "seats": { "total": 40 },
+  "ticketPrice": 700,
+  "durationMinutes": 150,
+  "ageLimit": 18,
+  "salesOpen": true,
+  "mapUrl": "https://2gis.ru/vladivostok"
 }
 
-### v2 get
-GET {{base}}/api/v2/sessions/{{sessionId}}
-Authorization: Bearer {{token}}
+### Невалидные данные -> 400 ProblemDetails
+POST {{base}}/api/v1/events
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
 
-### v1 replace (full v1 contract)
-PUT {{base}}/api/v1/sessions/{{sessionId}}
-Authorization: Bearer {{token}}
+{ "gameId": "{{gameId}}", "capacity": 0 }
+
+### Полная замена (v1 не трогает mapUrl)
+PUT {{base}}/api/v1/events/{{createdEventId}}
+Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 {
-  "gameId": "{{gameId}}", "startsAt": "2026-11-12T19:00:00+03:00",
-  "timeZoneId": "Europe/Moscow", "venue": "Пример площадки",
-  "capacity": 100, "ticketPrice": 1500,
-  "durationMinutes": 120, "ageLimit": 12, "salesOpen": true
+  "gameId": "{{gameId}}", "startsAt": "2026-12-12T19:00:00+10:00",
+  "timeZoneId": "Asia/Vladivostok", "venue": "Демо-бар «Пластинка»",
+  "capacity": 50, "ticketPrice": 700, "durationMinutes": 150, "ageLimit": 18, "salesOpen": true
 }
 
-### delete (only sessions without bookings)
-DELETE {{base}}/api/v2/sessions/{{sessionId}}
-Authorization: Bearer {{token}}
+### Менеджер не может создавать мероприятия -> 403
+POST {{base}}/api/v1/events
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{ "gameId": "{{gameId}}", "startsAt": "2026-12-20T19:00:00+10:00", "timeZoneId": "Asia/Vladivostok", "venue": "Зал", "capacity": 10, "ticketPrice": 700 }
+
+### Удаление сеанса без заявок -> 204 (с заявками -> 409)
+DELETE {{base}}/api/v1/events/{{createdEventId}}
+Authorization: Bearer {{adminToken}}
+
+### Повторно -> 404
+GET {{base}}/api/v1/events/{{createdEventId}}
+Authorization: Bearer {{adminToken}}
+
+########## Заявки v1 (владелец — из токена)
+
+### Пользователь создаёт заявку -> 201 (ownerUserId в теле игнорируется)
+# @name createBooking
+POST {{base}}/api/v1/bookings
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+Idempotency-Key: demo-booking-1
+
+{
+  "eventId": "{{eventId}}",
+  "teamName": "Команда из API",
+  "customerName": "Демо Пользователь",
+  "phone": "8 900 000-00-07",
+  "telegram": "@demo_api",
+  "quantity": 2
+}
+
+### Повтор с тем же Idempotency-Key -> 200, та же заявка
+POST {{base}}/api/v1/bookings
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+Idempotency-Key: demo-booking-1
+
+{ "eventId": "{{eventId}}", "teamName": "Команда из API", "customerName": "Демо Пользователь", "phone": "89000000007", "quantity": 2 }
+
+### Свои заявки (User видит только свои)
+GET {{base}}/api/v1/bookings
+Authorization: Bearer {{userToken}}
+
+### Только ожидающие
+GET {{base}}/api/v1/bookings?status=Pending
+Authorization: Bearer {{managerToken}}
+
+### Карточка своей заявки
+GET {{base}}/api/v1/bookings/{{bookingId}}
+Authorization: Bearer {{userToken}}
+
+### Изменение своей неоплаченной заявки
+PUT {{base}}/api/v1/bookings/{{bookingId}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{ "teamName": "Команда из API (переименована)", "customerName": "Демо Пользователь", "telegram": "@demo_api", "quantity": 3 }
+
+### Чужая заявка: войдите вторым пользователем (/account/register) и подставьте его токен -> 403
+GET {{base}}/api/v1/bookings/{{bookingId}}
+Authorization: Bearer REPLACE_WITH_OTHER_USER_TOKEN
+
+########## Отчёты
+
+### Сводка (Admin — все игры, Manager — назначенные)
+GET {{base}}/api/v1/reports/summary
+Authorization: Bearer {{adminToken}}
+
+###
+GET {{base}}/api/v1/reports/summary
+Authorization: Bearer {{managerToken}}
+
+### Пользователь -> 403
+GET {{base}}/api/v1/reports/summary
+Authorization: Bearer {{userToken}}

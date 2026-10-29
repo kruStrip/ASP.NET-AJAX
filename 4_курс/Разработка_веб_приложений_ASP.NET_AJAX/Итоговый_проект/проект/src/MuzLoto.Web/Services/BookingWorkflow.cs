@@ -8,9 +8,18 @@ using Npgsql;
 
 namespace MuzLoto.Web.Services;
 
+/// <param name="ExternalSubmissionId">Idempotency key: FormDesigner submission ID or the API Idempotency-Key.</param>
+/// <param name="OwnerUserId">Account that created the booking via the API; null for FormDesigner.</param>
 public sealed record IncomingBooking(
     string ExternalSubmissionId, Guid GameSessionId, string TeamName,
-    string CustomerName, string Phone, string? Telegram, int Quantity);
+    string CustomerName, string Phone, string? Telegram, int Quantity,
+    string Provider = BookingSources.FormDesigner, string? OwnerUserId = null);
+
+public static class BookingSources
+{
+    public const string FormDesigner = "FormDesigner";
+    public const string Api = "Api";
+}
 
 public sealed class BookingWorkflow(
     AppDbContext db, IHubContext<BookingHub> hub, ILogger<BookingWorkflow> logger,
@@ -25,11 +34,12 @@ public sealed class BookingWorkflow(
             string.IsNullOrWhiteSpace(input.TeamName) || input.TeamName.Length > 150 ||
             string.IsNullOrWhiteSpace(input.CustomerName) || input.CustomerName.Length > 150 ||
             string.IsNullOrWhiteSpace(input.Phone) || input.Phone.Length > 40 ||
-            input.Quantity < 1 || input.Quantity > (MaxPerBooking ?? int.MaxValue))
+            input.Quantity < 1 || input.Quantity > (MaxPerBooking ?? int.MaxValue) ||
+            input.Provider is not (BookingSources.FormDesigner or BookingSources.Api))
             throw new BusinessException("Неверные данные заявки.", 400);
         if (input.Telegram?.Length > 100) throw new BusinessException("Слишком длинный Telegram.", 400);
 
-        const string provider = "FormDesigner";
+        var provider = input.Provider;
         Booking? booking = null;
         Guid sessionId;
         try
@@ -55,7 +65,7 @@ public sealed class BookingWorkflow(
                 GameSessionId = session.Id, TeamName = input.TeamName.Trim(),
                 CustomerName = input.CustomerName.Trim(), Phone = input.Phone.Trim(),
                 Telegram = input.Telegram?.Trim(), Quantity = input.Quantity,
-                TicketPriceSnapshot = session.TicketPrice
+                TicketPriceSnapshot = session.TicketPrice, OwnerUserId = input.OwnerUserId
             };
             db.Bookings.Add(booking);
             db.ExternalSubmissions.Add(new ExternalSubmission

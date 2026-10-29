@@ -3,8 +3,8 @@ using MuzLoto.Web.Services;
 
 namespace MuzLoto.Web.Controllers;
 
-/// <summary>Uniform RFC 7807 errors for both API contract versions.</summary>
-public abstract class SessionApiBase : ControllerBase
+/// <summary>Uniform RFC 7807 errors for every business API controller.</summary>
+public abstract class ApiControllerBase : ControllerBase
 {
     protected async Task<IActionResult> Safe(Func<Task<IActionResult>> action)
     {

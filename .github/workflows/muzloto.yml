@@ -81,11 +81,11 @@ jobs:
           trap 'kill "$app_pid" 2>/dev/null || :; cat /tmp/muzloto-server.log' EXIT
           curl --retry 20 --retry-connrefused --retry-delay 2 --fail --silent \
             http://127.0.0.1:5080/health | grep -q '"ok"'
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5080/api/v2/sessions)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5080/api/v2/events)" = 401
           token=$(curl --fail --silent -H 'Content-Type: application/json' \
             -d '{"email":"admin@ci.invalid","password":"Temporary_CI_password_456!"}' \
             http://127.0.0.1:5080/api/auth/login | python3 -c 'import json,sys;print(json.load(sys.stdin)["accessToken"])')
           curl --fail --silent -H "Authorization: Bearer $token" \
-            http://127.0.0.1:5080/api/v2/sessions | grep -q '"items"'
+            http://127.0.0.1:5080/api/v2/events | grep -q '"items"'
           curl --fail --silent \
             http://127.0.0.1:5080/lib/signalr/signalr.min.js | grep -q 'signalR'

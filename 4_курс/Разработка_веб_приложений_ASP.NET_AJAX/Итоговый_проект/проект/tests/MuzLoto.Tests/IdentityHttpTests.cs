@@ -211,12 +211,12 @@ public sealed class IdentityHttpTests(AppFactory app)
     public async Task Api_WithoutToken401_UserTokenOnStaffEndpoint403()
     {
         var client = app.Browser();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/sessions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/events")).StatusCode);
 
         var user = await app.CreateUserAsync("User");
         var login = await client.PostAsJsonAsync("/api/auth/login", new { email = user.Email, password = "Secret123" });
         var token = (await login.Content.ReadFromJsonAsync<TokenDto>())!.AccessToken;
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/sessions");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/events");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(request)).StatusCode);
     }

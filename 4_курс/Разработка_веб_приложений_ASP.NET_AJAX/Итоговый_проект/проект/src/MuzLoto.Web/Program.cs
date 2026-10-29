@@ -92,15 +92,24 @@ builder.Services.AddAuthentication().AddJwtBearer(JwtBearerDefaults.Authenticati
 });
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy(BookingPolicies.CanEditBooking, p => p.AddRequirements(new BookingRequirement(ownerAllowed: true)));
-    options.AddPolicy(BookingPolicies.CanManageBooking, p => p.AddRequirements(new BookingRequirement(ownerAllowed: false)));
+    options.AddPolicy(BookingPolicies.CanViewBooking, p => p.AddRequirements(new BookingRequirement(OwnerAccess.AnyStatus)));
+    options.AddPolicy(BookingPolicies.CanEditBooking, p => p.AddRequirements(new BookingRequirement(OwnerAccess.PendingOnly)));
+    options.AddPolicy(BookingPolicies.CanManageBooking, p => p.AddRequirements(new BookingRequirement(OwnerAccess.None)));
 });
 builder.Services.AddScoped<IAuthorizationHandler, BookingAuthorizationHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = "МузЛото REST API", Version = "v1/v2" });
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = "МузЛото REST API", Version = "v1",
+        Description = "Мероприятия (плоский контракт), заявки, отчёты. Токен: POST /api/auth/login." });
+    options.SwaggerDoc("v2", new OpenApiInfo { Title = "МузЛото REST API", Version = "v2",
+        Description = "Мероприятия v2: вложенные location/availability, remainingTickets, mapUrl, поиск и пагинация." });
+    // Controllers without a group (auth, integration) are shared by both documents.
+    options.DocInclusionPredicate((doc, api) => api.GroupName is null || api.GroupName == doc);
+    options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, "MuzLoto.Web.xml"));
+    // Every controller nests its own ReadDto/WriteDto: prefix the schema with the controller to keep names unique.
+    options.CustomSchemaIds(t => t.DeclaringType is null ? t.Name : t.DeclaringType.Name.Replace("Controller", "") + t.Name);
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization", Type = SecuritySchemeType.Http,
@@ -135,13 +144,18 @@ builder.Services.AddScoped<BookingWorkflow>();
 builder.Services.AddScoped<StaffAccess>();
 builder.Services.AddScoped<StaffManagement>();
 builder.Services.AddScoped<SessionCrud>();
+builder.Services.AddScoped<SalesReport>();
 builder.Services.AddScoped<JwtTokenService>();
 
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(o =>
+    {
+        o.SwaggerEndpoint("/swagger/v1/swagger.json", "МузЛото API v1");
+        o.SwaggerEndpoint("/swagger/v2/swagger.json", "МузЛото API v2");
+    });
 }
 else
 {
