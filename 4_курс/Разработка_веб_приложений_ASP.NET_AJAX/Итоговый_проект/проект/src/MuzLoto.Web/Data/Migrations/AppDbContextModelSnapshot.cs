@@ -511,6 +511,55 @@ namespace MuzLoto.Web.Data.Migrations
                     b.ToTable("Payments");
                 });
 
+            modelBuilder.Entity("MuzLoto.Web.Domain.QuantityChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CompletedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("NewQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OldQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("RefundId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_QuantityChanges_BookingId_Awaiting")
+                        .HasFilter("\"Status\" = 0");
+
+                    b.HasIndex("RefundId");
+
+                    b.ToTable("QuantityChanges");
+                });
+
             modelBuilder.Entity("MuzLoto.Web.Domain.Refund", b =>
                 {
                     b.Property<Guid>("Id")
@@ -533,6 +582,9 @@ namespace MuzLoto.Web.Data.Migrations
                     b.Property<string>("CompletedByUserId")
                         .HasColumnType("text");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("PaymentId")
                         .HasColumnType("uuid");
 
@@ -553,9 +605,12 @@ namespace MuzLoto.Web.Data.Migrations
 
                     b.HasIndex("PaymentId")
                         .IsUnique()
-                        .HasFilter("\"Status\" IN (0, 1)");
+                        .HasDatabaseName("IX_Refunds_PaymentId_OpenCancellation")
+                        .HasFilter("\"Status\" IN (0, 1) AND \"Kind\" = 0");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("PaymentId", "Kind");
 
                     b.ToTable("Refunds");
                 });
@@ -709,6 +764,24 @@ namespace MuzLoto.Web.Data.Migrations
                     b.Navigation("ConfirmedByUser");
                 });
 
+            modelBuilder.Entity("MuzLoto.Web.Domain.QuantityChange", b =>
+                {
+                    b.HasOne("MuzLoto.Web.Domain.Booking", "Booking")
+                        .WithMany("QuantityChanges")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MuzLoto.Web.Domain.Refund", "Refund")
+                        .WithMany()
+                        .HasForeignKey("RefundId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Refund");
+                });
+
             modelBuilder.Entity("MuzLoto.Web.Domain.Refund", b =>
                 {
                     b.HasOne("MuzLoto.Web.Domain.Payment", "Payment")
@@ -732,6 +805,8 @@ namespace MuzLoto.Web.Data.Migrations
                     b.Navigation("ExternalSubmissions");
 
                     b.Navigation("Payment");
+
+                    b.Navigation("QuantityChanges");
 
                     b.Navigation("StatusHistory");
                 });
