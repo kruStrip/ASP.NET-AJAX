@@ -11,7 +11,9 @@
 <h2>@b.TeamName</h2>
 <p>@b.Quantity бил. · @((b.Quantity * b.TicketPriceSnapshot).ToString("N2")) ₽ · @b.GameSession.Venue</p>
 <span class="status @MineModel.StatusClass(b.Status)">@MineModel.StatusText(b.Status)</span>
-</div></article>
+</div>
+@if (Model.Editable.Contains(b.Id)) { <a class="button secondary" asp-page="/Bookings/Edit" asp-route-id="@b.Id">Изменить</a> }
+</article>
 }
 @if (Model.Bookings.Count == 0) { <p class="muted">Заявок пока нет.</p> }
 </div>

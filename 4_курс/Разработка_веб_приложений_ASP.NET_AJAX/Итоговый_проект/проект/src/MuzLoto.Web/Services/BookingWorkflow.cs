@@ -16,7 +16,8 @@ public sealed class BookingWorkflow(
     AppDbContext db, IHubContext<BookingHub> hub, ILogger<BookingWorkflow> logger,
     IConfiguration config)
 {
-    private int MaxPerBooking => config.GetValue("Integration:MaxTicketsPerBooking", 10);
+    /// <summary>Optional global cap; by default a booking may take up to the remaining seats.</summary>
+    private int? MaxPerBooking => config.GetValue<int?>("Booking:MaxTicketsPerBooking");
 
     public async Task<(Guid Id, bool Duplicate)> ReceiveAsync(IncomingBooking input, CancellationToken ct = default)
     {
@@ -24,7 +25,7 @@ public sealed class BookingWorkflow(
             string.IsNullOrWhiteSpace(input.TeamName) || input.TeamName.Length > 150 ||
             string.IsNullOrWhiteSpace(input.CustomerName) || input.CustomerName.Length > 150 ||
             string.IsNullOrWhiteSpace(input.Phone) || input.Phone.Length > 40 ||
-            input.Quantity < 1 || input.Quantity > MaxPerBooking)
+            input.Quantity < 1 || input.Quantity > (MaxPerBooking ?? int.MaxValue))
             throw new BusinessException("Неверные данные заявки.", 400);
         if (input.Telegram?.Length > 100) throw new BusinessException("Слишком длинный Telegram.", 400);
 
@@ -42,8 +43,12 @@ public sealed class BookingWorkflow(
                 ?? throw new BusinessException("Мероприятие не найдено.", 404);
             if (session.CompletedAt.HasValue || !session.SalesOpen)
                 throw new BusinessException("Продажа на это мероприятие закрыта.");
-            if (input.Quantity > session.Capacity)
-                throw new BusinessException("Количество билетов больше вместимости мероприятия.");
+            // Pending requests never reserve seats, so only paid bookings reduce what can be requested.
+            var reserved = await db.Bookings
+                .Where(x => x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed)
+                .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
+            if (input.Quantity > session.Capacity - reserved)
+                throw new BusinessException($"Свободных билетов меньше, чем запрошено: осталось {Math.Max(0, session.Capacity - reserved)}.");
 
             booking = new Booking
             {
@@ -176,6 +181,46 @@ public sealed class BookingWorkflow(
         await NotifyAsync(sessionId, "BookingUpdated", bookingId);
         await NotifyAsync(sessionId, "RefundRequested", bookingId);
         await NotifyAsync(sessionId, "TicketsAvailabilityChanged", bookingId);
+    }
+
+    /// <summary>Edit an unpaid booking. Pending requests hold no seats, so only the remaining-seat limit applies.</summary>
+    public async Task UpdatePendingAsync(Guid bookingId, string teamName, string customerName,
+        string? telegram, int quantity, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(teamName) || teamName.Length > 150 ||
+            string.IsNullOrWhiteSpace(customerName) || customerName.Length > 150 ||
+            telegram?.Length > 100 || quantity < 1 || quantity > (MaxPerBooking ?? int.MaxValue))
+            throw new BusinessException("Неверные данные заявки.", 400);
+        Guid sessionId;
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var booking = await db.Bookings.Include(x => x.GameSession)
+                .SingleOrDefaultAsync(x => x.Id == bookingId, ct)
+                ?? throw new BusinessException("Заявка не найдена.", 404);
+            if (booking.Status != BookingStatus.Pending)
+                throw new BusinessException("Изменить можно только неоплаченную заявку.");
+            var session = booking.GameSession;
+            if (session.CompletedAt.HasValue || !session.SalesOpen)
+                throw new BusinessException("Продажа на это мероприятие закрыта.");
+            var reserved = await db.Bookings
+                .Where(x => x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed)
+                .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
+            if (quantity > session.Capacity - reserved)
+                throw new BusinessException($"Свободных билетов меньше, чем запрошено: осталось {Math.Max(0, session.Capacity - reserved)}.");
+            booking.TeamName = teamName.Trim();
+            booking.CustomerName = customerName.Trim();
+            booking.Telegram = telegram;
+            booking.Quantity = quantity;
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            sessionId = session.Id;
+        }
+        catch (Exception ex) when (IsSerializationFailure(ex))
+        {
+            throw new BusinessException("Данные заявки изменились одновременно. Повторите сохранение.");
+        }
+        await NotifyAsync(sessionId, "BookingUpdated", bookingId);
     }
 
     /// <summary>Restore a cancelled booking within one hour, retaining any previously recorded payment.</summary>

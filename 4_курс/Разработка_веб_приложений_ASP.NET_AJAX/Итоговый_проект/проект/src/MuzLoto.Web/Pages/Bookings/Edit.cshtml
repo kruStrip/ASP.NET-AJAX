@@ -1,0 +1,13 @@
+@page "/bookings/{id:guid}/edit"
+@model MuzLoto.Web.Pages.Bookings.EditModel
+@{ ViewData["Title"] = "Изменение заявки"; }
+<div class="page-heading"><div><div class="eyebrow">@Model.GameTitle — @Model.StartsLocal</div><h1>Изменение заявки</h1>
+<p class="muted">Неоплаченную заявку можно изменить до подтверждения оплаты. Свободно билетов: @Model.Remaining.</p></div></div>
+<section class="panel form-panel"><form method="post">
+<div asp-validation-summary="ModelOnly" class="error-text"></div>
+<label asp-for="Input.TeamName">Название команды</label><input asp-for="Input.TeamName" /><span asp-validation-for="Input.TeamName" class="error-text"></span>
+<label asp-for="Input.CustomerName">Имя</label><input asp-for="Input.CustomerName" /><span asp-validation-for="Input.CustomerName" class="error-text"></span>
+<label asp-for="Input.Telegram">Telegram-ник</label><input asp-for="Input.Telegram" placeholder="@@username" /><span asp-validation-for="Input.Telegram" class="error-text"></span>
+<label asp-for="Input.Quantity">Количество билетов</label><input asp-for="Input.Quantity" type="number" min="1" max="@Model.Remaining" /><span asp-validation-for="Input.Quantity" class="error-text"></span>
+<div class="actions"><button type="submit" class="button">Сохранить</button><a asp-page="/Bookings/Mine" class="button secondary">Отмена</a></div>
+</form></section>

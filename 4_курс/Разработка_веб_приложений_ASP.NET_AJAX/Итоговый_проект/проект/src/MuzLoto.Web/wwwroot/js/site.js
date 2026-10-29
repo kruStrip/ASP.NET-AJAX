@@ -10,6 +10,10 @@
     notice.hidden = false;
   }
 
+  function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+  }
+
   async function refreshVisibleList() {
     const current = document.querySelector('[data-live-list]');
     if (!current || pendingRefresh) return;
@@ -38,10 +42,13 @@
     const button = form.querySelector('[type="submit"]');
     if (button) button.disabled = true;
     try {
+      // The antiforgery token travels only in the X-CSRF-TOKEN header, taken from <meta name="csrf-token">.
+      const body = new FormData(form);
+      body.delete('__RequestVerificationToken');
       const response = await fetch(form.action, {
         method: 'POST', credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        body: new FormData(form) // includes Razor-generated antiforgery token
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
+        body
       });
       if (response.status === 401 || response.status === 403) {
         show(response.status === 401 ? 'Войдите повторно.' : 'Нет прав на действие.', true);

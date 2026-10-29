@@ -10,7 +10,7 @@ using MuzLoto.Web.Services;
 namespace MuzLoto.Web.Pages.Bookings;
 
 [Authorize(Roles = "Admin,Manager")]
-public class PendingModel(AppDbContext db, StaffAccess access, BookingWorkflow workflow) : PageModel
+public class PendingModel(AppDbContext db, IAuthorizationService authorization, BookingWorkflow workflow) : PageModel
 {
     public List<Booking> Bookings { get; private set; } = new();
     public List<Guid> AccessibleSessionIds { get; private set; } = new();
@@ -34,9 +34,10 @@ public class PendingModel(AppDbContext db, StaffAccess access, BookingWorkflow w
     }
     public async Task<IActionResult> OnPostConfirmAsync(Guid id, CancellationToken ct)
     {
-        var sessionId = await db.Bookings.Where(x => x.Id == id).Select(x => (Guid?)x.GameSessionId).FirstOrDefaultAsync(ct);
-        if (!sessionId.HasValue) return NotFound();
-        if (!await access.CanManageAsync(User, sessionId.Value, ct)) return Forbid();
+        var booking = await db.Bookings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (booking is null) return NotFound();
+        if (!(await authorization.AuthorizeAsync(User, booking, BookingPolicies.CanManageBooking)).Succeeded)
+            return Forbid();
         try
         {
             await workflow.ConfirmAsync(id, User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct);
@@ -46,9 +47,10 @@ public class PendingModel(AppDbContext db, StaffAccess access, BookingWorkflow w
     }
     public async Task<IActionResult> OnPostCancelAsync(Guid id, CancellationToken ct)
     {
-        var sessionId = await db.Bookings.Where(x => x.Id == id).Select(x => (Guid?)x.GameSessionId).FirstOrDefaultAsync(ct);
-        if (!sessionId.HasValue) return NotFound();
-        if (!await access.CanManageAsync(User, sessionId.Value, ct)) return Forbid();
+        var booking = await db.Bookings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (booking is null) return NotFound();
+        if (!(await authorization.AuthorizeAsync(User, booking, BookingPolicies.CanManageBooking)).Succeeded)
+            return Forbid();
         try
         {
             await workflow.CancelAsync(id, User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct);

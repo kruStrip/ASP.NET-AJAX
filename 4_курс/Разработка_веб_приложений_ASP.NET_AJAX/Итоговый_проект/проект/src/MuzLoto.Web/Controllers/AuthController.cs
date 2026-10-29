@@ -8,6 +8,7 @@ using MuzLoto.Web.Services;
 namespace MuzLoto.Web.Controllers;
 
 [ApiController]
+[IgnoreAntiforgeryToken]
 [Route("api/auth")]
 public sealed class AuthController(
     UserManager<AppUser> users, SignInManager<AppUser> signIn, JwtTokenService tokens) : ControllerBase

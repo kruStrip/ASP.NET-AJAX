@@ -1,6 +1,6 @@
 # МузЛото — информационная система мероприятий
 
-**Текущее состояние: этап 6a.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
+**Текущее состояние: этап 6b.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
 Сборка, unit- и интеграционные тесты на PostgreSQL проходят в GitHub Actions. Подробный статус — [docs/STATUS.md](docs/STATUS.md),
 изменения ТЗ — [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -10,7 +10,8 @@
 - Роли Admin / Manager / User; сотрудники и назначения менеджеров на игры (`/staff`).
 - Игры и сеансы, заявки «Нужно подтвердить», подтверждение оплаты (SERIALIZABLE, без перепродажи), отмена и восстановление в течение часа.
 - Завершение игры: неоплаченные заявки удаляются, оплаченные сохраняются. Ручные возвраты и чистая выручка.
-- «Мои заявки» (`/bookings/mine`) — только заявки текущего пользователя.
+- «Мои заявки» (`/bookings/mine`) — только заявки текущего пользователя; изменение неоплаченной заявки по политике `CanEditBooking`.
+- Демо-данные в Development: игры, сеансы, заявки, платежи, возвраты (вымышленные).
 - JWT `POST /api/auth/login`, REST CRUD сеансов `api/v1/sessions` и `api/v2/sessions`, Swagger `/swagger` в Development.
 - AJAX-действия с частичным обновлением, SignalR-уведомления по группам игр с переподключением.
 
@@ -19,6 +20,8 @@
 | Роль | E-mail | Пароль |
 |---|---|---|
 | Admin (seed) | `admin@muzloto.local` | `Admin2026!` |
+| Manager (демо) | `manager1@muzloto.local`, `manager2@muzloto.local` | `Manager2026!` |
+| User (демо) | `user@muzloto.local` | `User2026!` |
 
 Создаётся только в окружении Development (`appsettings.Development.json`); вне Development этот пароль запрещён.
 Если в `.env` заданы `MUZLOTO_ADMIN_EMAIL` и `MUZLOTO_ADMIN_PASSWORD`, используются они.
@@ -62,3 +65,7 @@ bash scripts/dev.sh
 ## Этап 6a: регистрация и собственные заявки
 
 Регистрация, публичная главная, `/bookings/mine`, `POST /api/auth/login`, 403 для запрещённых страниц, HTTP-тесты. После обновления выполните `bash scripts/init-db.sh` (миграция `BookingOwner`). Подробнее: [docs/STAGE6A.md](docs/STAGE6A.md).
+
+## Этап 6b: политики доступа, CSRF, демо-данные
+
+Политики `CanEditBooking` / `CanManageBooking`, CSRF в заголовке `X-CSRF-TOKEN`, демо-данные в Development. Клиентская форма остаётся в FormDesigner. Подробнее: [docs/STAGE6B.md](docs/STAGE6B.md).

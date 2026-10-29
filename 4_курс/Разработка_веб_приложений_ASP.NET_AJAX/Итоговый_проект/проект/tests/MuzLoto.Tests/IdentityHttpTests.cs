@@ -67,8 +67,16 @@ public sealed class AppFactory : WebApplicationFactory<Program>
     }
 }
 
+/// <summary>One application instance for all HTTP tests: no parallel startups racing to migrate the database.</summary>
+[CollectionDefinition(Name)]
+public sealed class AppCollection : ICollectionFixture<AppFactory>
+{
+    public const string Name = "MuzLoto app";
+}
+
 [Trait("Category", "Integration")]
-public sealed class IdentityHttpTests(AppFactory app) : IClassFixture<AppFactory>
+[Collection(AppCollection.Name)]
+public sealed class IdentityHttpTests(AppFactory app)
 {
     private sealed record TokenDto(string AccessToken, string TokenType, DateTimeOffset ExpiresAt);
 

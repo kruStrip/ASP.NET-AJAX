@@ -1,8 +1,10 @@
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
     <title>@ViewData["Title"] — МузЛото</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>

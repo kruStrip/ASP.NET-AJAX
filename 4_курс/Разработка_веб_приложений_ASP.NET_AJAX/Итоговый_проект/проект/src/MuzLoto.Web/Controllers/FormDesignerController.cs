@@ -10,6 +10,7 @@ namespace MuzLoto.Web.Controllers;
 /// <summary>Canonical JSON endpoint for a verified FormDesigner adapter.</summary>
 /// <remarks>The real FormDesigner field mapping/transport must be confirmed before connection.</remarks>
 [ApiController]
+[IgnoreAntiforgeryToken]
 [Route("api/integrations/formdesigner/submissions")]
 [AllowAnonymous]
 public sealed class FormDesignerController(BookingWorkflow workflow, IConfiguration config) : ControllerBase
@@ -22,7 +23,7 @@ public sealed class FormDesignerController(BookingWorkflow workflow, IConfigurat
         [Required, MaxLength(150)] public string CustomerName { get; set; } = string.Empty;
         [Required, MaxLength(40)] public string Phone { get; set; } = string.Empty;
         [MaxLength(100)] public string? Telegram { get; set; }
-        [Range(1, 10)] public int Quantity { get; set; }
+        [Range(1, 100000)] public int Quantity { get; set; }
     }
 
     [HttpPost]

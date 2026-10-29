@@ -35,7 +35,7 @@ public sealed class PostgresBookingWorkflowTests
         var hub = services.GetRequiredService<IHubContext<BookingHub>>();
         var logger = services.GetRequiredService<ILogger<BookingWorkflow>>();
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(
-            new Dictionary<string, string?> { ["Integration:MaxTicketsPerBooking"] = "10" }).Build();
+            new Dictionary<string, string?> { ["Booking:MaxTicketsPerBooking"] = "10" }).Build();
 
         await using var db = new AppDbContext(options);
         var user = new AppUser
@@ -107,7 +107,7 @@ public sealed class PostgresBookingWorkflowTests
         var logger = services.GetRequiredService<ILogger<BookingWorkflow>>();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Integration:MaxTicketsPerBooking"] = "10"
+            ["Booking:MaxTicketsPerBooking"] = "10"
         }).Build();
         await using var db = new AppDbContext(options);
         var user = new AppUser

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using System.Security.Claims;
@@ -88,7 +90,12 @@ builder.Services.AddAuthentication().AddJwtBearer(JwtBearerDefaults.Authenticati
         }
     };
 });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(BookingPolicies.CanEditBooking, p => p.AddRequirements(new BookingRequirement(ownerAllowed: true)));
+    options.AddPolicy(BookingPolicies.CanManageBooking, p => p.AddRequirements(new BookingRequirement(ownerAllowed: false)));
+});
+builder.Services.AddScoped<IAuthorizationHandler, BookingAuthorizationHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -108,6 +115,8 @@ builder.Services.AddSwaggerGen(options =>
         }] = Array.Empty<string>()
     });
 });
+// CSRF: every unsafe cookie-authenticated request needs a token; AJAX sends it in X-CSRF-TOKEN.
+builder.Services.AddAntiforgery(o => o.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AuthorizeFolder("/");
@@ -115,8 +124,10 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AllowAnonymousToPage("/Account/Login");
     options.Conventions.AllowAnonymousToPage("/Account/Register");
     options.Conventions.AllowAnonymousToPage("/Account/Denied");
-});
-builder.Services.AddControllers();
+}).AddMvcOptions(o => o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
+// JWT API controllers opt out with [IgnoreAntiforgeryToken]: browsers never attach a bearer token by themselves.
+builder.Services.AddControllers(o => o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
+
 builder.Services.AddSignalR();
 builder.Services.AddScoped<BookingWorkflow>();
 builder.Services.AddScoped<StaffAccess>();
@@ -147,6 +158,8 @@ app.Use(async (ctx, next) =>
     });
     await next();
 });
+// Money and dates are shown in Russian format regardless of the server's OS locale ("1 400,00", not "1,400.00").
+app.UseRequestLocalization("ru-RU");
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
@@ -167,5 +180,6 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
 }
 await IdentitySeeder.SeedAsync(app.Services, app.Configuration, app.Environment);
+await DemoDataSeeder.SeedAsync(app.Services, app.Configuration, app.Environment);
 app.Run();
 public partial class Program;

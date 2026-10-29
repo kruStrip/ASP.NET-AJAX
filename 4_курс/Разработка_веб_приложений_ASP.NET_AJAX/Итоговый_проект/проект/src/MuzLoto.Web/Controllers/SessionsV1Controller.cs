@@ -7,6 +7,7 @@ using MuzLoto.Web.Services;
 namespace MuzLoto.Web.Controllers;
 
 [ApiController]
+[IgnoreAntiforgeryToken]
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "Admin,Manager")]
 [Route("api/v1/sessions")]
 public sealed class SessionsV1Controller(SessionCrud sessions) : SessionApiBase

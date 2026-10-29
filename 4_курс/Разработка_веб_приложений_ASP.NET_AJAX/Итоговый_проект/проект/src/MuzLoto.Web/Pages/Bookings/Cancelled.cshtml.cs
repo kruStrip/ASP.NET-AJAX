@@ -10,7 +10,7 @@ using MuzLoto.Web.Services;
 namespace MuzLoto.Web.Pages.Bookings;
 
 [Authorize(Roles = "Admin,Manager")]
-public sealed class CancelledModel(AppDbContext db, StaffAccess access, BookingWorkflow workflow) : PageModel
+public sealed class CancelledModel(AppDbContext db, IAuthorizationService authorization, BookingWorkflow workflow) : PageModel
 {
     public List<Booking> Bookings { get; private set; } = new();
     public async Task OnGetAsync(CancellationToken ct)
@@ -31,10 +31,10 @@ public sealed class CancelledModel(AppDbContext db, StaffAccess access, BookingW
 
     public async Task<IActionResult> OnPostRestoreAsync(Guid id, CancellationToken ct)
     {
-        var sessionId = await db.Bookings.Where(x => x.Id == id)
-            .Select(x => (Guid?)x.GameSessionId).FirstOrDefaultAsync(ct);
-        if (!sessionId.HasValue) return NotFound();
-        if (!await access.CanManageAsync(User, sessionId.Value, ct)) return Forbid();
+        var booking = await db.Bookings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (booking is null) return NotFound();
+        if (!(await authorization.AuthorizeAsync(User, booking, BookingPolicies.CanManageBooking)).Succeeded)
+            return Forbid();
         try
         {
             await workflow.RestoreCancelledAsync(id,

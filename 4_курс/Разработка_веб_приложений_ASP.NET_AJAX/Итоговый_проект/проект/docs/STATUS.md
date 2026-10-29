@@ -46,14 +46,23 @@
 - [x] `/account/denied` → 403; `POST /api/auth/login`; claim e-mail; JWT для User.
 - [x] Dev-админ для Development; `dev.sh` запускает Development (Swagger доступен).
 - [x] **Проверено локально:** `dotnet build` без предупреждений; 31 тест (16 unit + 15 интеграционных на отдельной БД PostgreSQL), включая 10 HTTP-тестов через WebApplicationFactory.
-- [ ] GitHub Actions для коммита этапа 6a.
+- [x] Закоммичено: `1e69dab`, `4267f29`. GitHub Actions — после push.
+
+## Этап 6b — политики, CSRF, демо-данные
+
+См. [STAGE6B.md](STAGE6B.md). Своя форма и автоматические сообщения клиентам **отменены** — FormDesigner остаётся.
+
+- [x] Политики `CanEditBooking` / `CanManageBooking` + `IAuthorizationService`; `/bookings/{id}/edit`; 403 на чужую заявку.
+- [x] CSRF: глобальный фильтр, meta, заголовок `X-CSRF-TOKEN`; JWT-API исключён.
+- [x] Демо-данные Development (3–5 записей на таблицу), идемпотентно.
+- [x] **Проверено локально:** 35 тестов; seed на чистой БД.
 
 ## Дальше (план)
 
 | Этап | Содержание |
 |---|---|
-| 6b | Своя форма `/book` вместо FormDesigner, политика `CanManageBooking` + `IAuthorizationService`, CSRF в заголовке `X-CSRF-TOKEN`, seed-данные |
-| 6c | SignalR: `OnConnectedAsync`/`OnDisconnectedAsync`, счётчик подключений, отзыв групп, живой остаток мест на форме |
-| 7 | Рабочий Telegram-аккаунт для сообщений клиентам; API бронирований/отчётов, `/api/v{n}/events`, `mapUrl` |
-| 8 | Карточка игры, несколько сеансов, изображения, изменение количества, поиск, отчёты по играм и датам, чеки оплаты |
+| 6c | SignalR: `OnConnectedAsync`/`OnDisconnectedAsync`, счётчик подключений, отзыв групп |
+| 7 | API бронирований/отчётов с фильтром по владельцу, `/api/v{n}/events`, `mapUrl` |
+| 8 | Карточка игры, несколько сеансов, изображения, изменение количества, поиск, отчёты по играм и датам |
+| 9 | Проверка реального FormDesigner: формат заявки, способ доставки, синхронизация списка игр |
 | 10 | Документация, презентация, сценарий защиты |
