@@ -49,7 +49,7 @@ public sealed class FormImageLinksTests(AppFactory app)
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal("image/png", first.Content.Headers.ContentType?.MediaType);
         Assert.Equal(PngA, await first.Content.ReadAsByteArrayAsync());
-        Assert.Equal(TimeSpan.FromMinutes(5), first.Headers.CacheControl?.MaxAge);
+        Assert.True(first.Headers.CacheControl?.NoCache);                 // always revalidated: no stale picture
         var etag = first.Headers.ETag!;
 
         using (var revalidate = new HttpRequestMessage(HttpMethod.Get, $"/i/{number}"))
