@@ -10,6 +10,8 @@ using Xunit;
 
 namespace MuzLoto.Tests;
 
+// Shares the app collection so it never creates roles while the app seeder does the same on a fresh database.
+[Collection(AppCollection.Name)]
 public sealed class StaffManagementTests
 {
     [Theory]
