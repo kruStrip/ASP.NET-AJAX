@@ -208,6 +208,17 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+// Ten fixed public links for the FormDesigner form. The link never changes, the picture behind it can:
+// browsers keep it for 5 minutes, then revalidate by ETag (the version) and get 304 or the new picture.
+app.MapGet("/i/{number:int:range(1,10)}", async (int number, CoverImages images, HttpContext http, CancellationToken ct) =>
+{
+    var file = await images.OpenSlotAsync(number, ct);
+    if (file is null) return Results.NotFound();
+    http.Response.Headers.CacheControl = "public, max-age=300";
+    return Results.File(file.Path, file.ContentType, lastModified: file.UpdatedAt,
+        entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{number}-{file.Version}\""));
+}).AllowAnonymous();
+
 // Uploaded covers: staff only, cache-busted by ?v=version.
 app.MapGet("/images/{id:guid}", async (Guid id, CoverImages images, HttpContext http, CancellationToken ct) =>
 {

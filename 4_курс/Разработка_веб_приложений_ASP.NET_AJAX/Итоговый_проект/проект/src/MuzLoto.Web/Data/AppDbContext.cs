@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<EventStaffAssignment> EventStaffAssignments => Set<EventStaffAssignment>();
     public DbSet<ExternalSubmission> ExternalSubmissions => Set<ExternalSubmission>();
     public DbSet<QuantityChange> QuantityChanges => Set<QuantityChange>();
+    public DbSet<ImageSlot> ImageSlots => Set<ImageSlot>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -85,6 +86,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             // One surcharge waiting at a time per order.
             e.HasIndex(x => x.BookingId).IsUnique().HasFilter("\"Status\" = 0")
                 .HasDatabaseName("IX_QuantityChanges_BookingId_Awaiting");
+        });
+        b.Entity<ImageSlot>(e =>
+        {
+            e.HasKey(x => x.Number);
+            e.Property(x => x.Number).ValueGeneratedNever();
+            e.ToTable(t => t.HasCheckConstraint("CK_ImageSlots_Number", $"\"Number\" BETWEEN 1 AND {ImageSlot.Count}"));
+            e.Property(x => x.StorageKey).HasMaxLength(500).IsRequired();
+            e.Property(x => x.Note).HasMaxLength(100);
         });
         b.Entity<EventStaffAssignment>(e =>
         {

@@ -122,6 +122,12 @@ public static class DemoDataSeeder
                 Status = QuantityChangeStatus.Cancelled, RequestedAt = now.AddHours(-3), RequestedByUserId = admin?.Id,
                 CompletedAt = now.AddHours(-1), CompletedByUserId = admin?.Id });
         drums.Quantity = 6;
+
+        // Form image links /i/1 … /i/3 point at the demo covers.
+        db.ImageSlots.AddRange(
+            new ImageSlot { Number = 1, StorageKey = "/img/covers/1.svg", Note = "Хиты 2000-х" },
+            new ImageSlot { Number = 2, StorageKey = "/img/covers/2.svg", Note = "Русский рок" },
+            new ImageSlot { Number = 3, StorageKey = "/img/covers/3.svg", Note = "Саундтреки" });
         CancelPaid(Book(sessions[0], "Опоздавшие", 2), RefundStatus.Pending);
         CancelPaid(Book(sessions[3], "Передумавшие", 3), RefundStatus.Completed);
         CancelPaid(Book(sessions[4], "Вернёмся позже", 2), RefundStatus.Pending);

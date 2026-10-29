@@ -66,3 +66,15 @@ body.menu-open{overflow:hidden}
 /* Search fields fit their hint ("Телефон, команда, имя или ID"); full width on phones. */
 .filters input[type=search]{flex:1 1 340px;min-width:0;max-width:460px}
 @media(max-width:720px){.filters input[type=search]{max-width:none}}
+/* Form image links */
+.slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,520px),1fr));gap:14px}
+.slot-card{align-items:flex-start}
+.slot-preview{flex:none;width:160px;height:160px;border-radius:12px;background:var(--field);display:grid;place-items:center;overflow:hidden}
+.slot-preview img{width:100%;height:100%;object-fit:contain}
+.slot-body{flex:1;min-width:0;display:grid;gap:8px}
+.slot-body h2{margin:0}
+.copy-row{display:flex;gap:8px}
+.copy-row input{flex:1;min-width:0}
+.slot-form{display:grid;gap:6px}
+.slot-form label{font-size:13px;color:var(--nav)}
+@media(max-width:720px){.slot-preview{width:100%;height:200px}}

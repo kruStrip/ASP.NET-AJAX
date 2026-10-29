@@ -77,6 +77,19 @@
     finally { if (button?.isConnected) button.disabled = false; }
   });
 
+  // "Скопировать" next to a link; falls back to selecting the text when the clipboard API is unavailable.
+  document.addEventListener('click', async event => {
+    const button = event.target instanceof Element ? event.target.closest('[data-copy]') : null;
+    if (!button) return;
+    try { await navigator.clipboard.writeText(button.dataset.copy); show('Ссылка скопирована.'); }
+    catch { button.previousElementSibling?.select?.(); show('Выделите ссылку и скопируйте её (Ctrl+C).', true); }
+  });
+  // A submit button can ask for its own confirmation (e.g. "Удалить" inside a form whose main action is "Сохранить").
+  document.addEventListener('click', event => {
+    const button = event.target instanceof Element ? event.target.closest('[data-confirm-button]') : null;
+    if (button && !window.confirm(button.dataset.confirmButton)) event.preventDefault();
+  });
+
   // Date fields "14.10.2026 19:00": digits are typed, the dots, space and colon are inserted automatically.
   document.addEventListener('input', event => {
     const field = event.target;
