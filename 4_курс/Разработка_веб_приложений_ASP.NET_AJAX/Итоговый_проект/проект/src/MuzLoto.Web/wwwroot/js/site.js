@@ -75,7 +75,8 @@
 
   // SignalR only runs when the self-hosted client is installed via scripts/install-client.sh.
   // Do not fall back to an external CDN: this app uses a strict same-origin CSP.
-  if (!window.signalR || !document.querySelector('[data-live-list]')) return;
+  // The layout marks staff pages with data-hub; the hub itself rejects everyone else.
+  if (!window.signalR || !document.body.dataset.hub) return;
   connection = new window.signalR.HubConnectionBuilder()
     .withUrl('/hubs/bookings')
     .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
@@ -93,6 +94,18 @@
     'RefundRequested', 'RefundCancelled', 'RefundCompleted']) {
     connection.on(eventName, () => { void refreshVisibleList(); });
   }
+  const online = document.querySelector('[data-online-count]');
+  connection.on('OnlineCountChanged', count => {
+    if (!online) return;
+    online.textContent = `Онлайн: ${count}`;
+    online.hidden = false;
+  });
+  // The server took this connection out of a game group (assignment or role removed).
+  connection.on('AccessRevoked', () => {
+    show('Доступ к одной из игр отозван администратором. Список обновлён.', true);
+    void refreshVisibleList();
+  });
+  // A reconnect is a new connection: JoinSession re-checks the rights for every group.
   connection.onreconnected(() => { void joinGroups(); void refreshVisibleList(); });
   connection.start().then(joinGroups).catch(() => { /* AJAX forms still work without SignalR */ });
 })();

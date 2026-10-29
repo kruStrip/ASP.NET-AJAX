@@ -8,3 +8,4 @@ select{width:100%;background:#111315;color:var(--text);border:1px solid #53565c;
 .footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;max-width:1180px;margin:0 auto;padding:24px 20px 96px;font-size:13px;opacity:.75}
 .hero h1{margin-top:4px}
 @media(max-width:720px){.user-name{display:none}}
+.online{font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:999px;color:var(--accent)}

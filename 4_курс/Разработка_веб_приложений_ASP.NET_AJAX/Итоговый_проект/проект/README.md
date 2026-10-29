@@ -1,6 +1,6 @@
 # МузЛото — информационная система мероприятий
 
-**Текущее состояние: этап 6b.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
+**Текущее состояние: этап 6c.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
 Сборка, unit- и интеграционные тесты на PostgreSQL проходят в GitHub Actions. Подробный статус — [docs/STATUS.md](docs/STATUS.md),
 изменения ТЗ — [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -13,7 +13,7 @@
 - «Мои заявки» (`/bookings/mine`) — только заявки текущего пользователя; изменение неоплаченной заявки по политике `CanEditBooking`.
 - Демо-данные в Development: игры, сеансы, заявки, платежи, возвраты (вымышленные).
 - JWT `POST /api/auth/login`, REST CRUD сеансов `api/v1/sessions` и `api/v2/sessions`, Swagger `/swagger` в Development.
-- AJAX-действия с частичным обновлением, SignalR-уведомления по группам игр с переподключением.
+- AJAX-действия с частичным обновлением, SignalR-уведомления по группам игр с переподключением, счётчик сотрудников онлайн, мгновенный отзыв доступа к группе.
 
 ## Учётные данные для локальной разработки
 
@@ -69,3 +69,7 @@ bash scripts/dev.sh
 ## Этап 6b: политики доступа, CSRF, демо-данные
 
 Политики `CanEditBooking` / `CanManageBooking`, CSRF в заголовке `X-CSRF-TOKEN`, демо-данные в Development. Клиентская форма остаётся в FormDesigner. Подробнее: [docs/STAGE6B.md](docs/STAGE6B.md).
+
+## Этап 6c: SignalR
+
+Обработчики подключения и отключения, учёт подключений, счётчик «Онлайн», отзыв групп при снятии назначения или смене роли, повторная проверка прав при переподключении. Подробнее: [docs/STAGE6C.md](docs/STAGE6C.md).

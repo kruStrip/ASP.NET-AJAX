@@ -55,6 +55,29 @@ public sealed class AppFactory : WebApplicationFactory<Program>
         return await client.PostAsync(url, new FormUrlEncodedContent(fields));
     }
 
+    /// <summary>Signs in without a cookie container and returns the raw Cookie header (for the SignalR client).</summary>
+    public async Task<string> CookieHeaderAsync(AppUser user, string password = "Secret123")
+    {
+        var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
+        static IEnumerable<string> Cookies(HttpResponseMessage r) =>
+            r.Headers.TryGetValues("Set-Cookie", out var values) ? values.Select(v => v.Split(';')[0]) : [];
+        var page = await client.GetAsync("/account/login");
+        var antiforgeryCookie = string.Join("; ", Cookies(page));
+        var token = Regex.Match(await page.Content.ReadAsStringAsync(),
+            "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value;
+        using var login = new HttpRequestMessage(HttpMethod.Post, "/account/login")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["Input.Email"] = user.Email!, ["Input.Password"] = password, ["__RequestVerificationToken"] = token
+            })
+        };
+        login.Headers.Add("Cookie", antiforgeryCookie);
+        var response = await client.SendAsync(login);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        return string.Join("; ", Cookies(response).Where(c => c.StartsWith(".AspNetCore.Identity.Application=", StringComparison.Ordinal)));
+    }
+
     public async Task<HttpClient> SignedInAsync(AppUser user, string password = "Secret123")
     {
         var client = Browser();

@@ -3,11 +3,13 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MuzLoto.Web.Data;
 using MuzLoto.Web.Domain;
+using MuzLoto.Web.Hubs;
 
 namespace MuzLoto.Web.Services;
 
 /// <summary>Administrative operations on staff and game assignments. Never accepts a caller-supplied role outside the allowlist.</summary>
-public sealed class StaffManagement(AppDbContext db, UserManager<AppUser> users, IConfiguration config)
+public sealed class StaffManagement(AppDbContext db, UserManager<AppUser> users, IConfiguration config,
+    HubAccessRevoker revoker)
 {
     public static readonly string[] Roles = ["Admin", "Manager", "User"];
     public static bool IsAllowedRole(string? role) => role is "Admin" or "Manager" or "User";
@@ -68,6 +70,8 @@ public sealed class StaffManagement(AppDbContext db, UserManager<AppUser> users,
         // Invalidates previously issued cookies and JWTs carrying the former security stamp.
         RequireSuccess(await users.UpdateSecurityStampAsync(target), "Обновление безопасности");
         await tx.CommitAsync(ct);
+        // Live SignalR connections were authorised under the old role: drop them from every game group now.
+        await revoker.RevokeAsync(targetId);
     }
 
     public async Task AssignManagerAsync(Guid sessionId, string managerId, CancellationToken ct = default)
@@ -90,6 +94,7 @@ public sealed class StaffManagement(AppDbContext db, UserManager<AppUser> users,
         if (assignment is null) return;
         db.EventStaffAssignments.Remove(assignment);
         await db.SaveChangesAsync(ct);
+        await revoker.RevokeAsync(managerId, sessionId);
     }
 
     private static void RequireSuccess(IdentityResult result, string operation)

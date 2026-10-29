@@ -39,6 +39,9 @@ public sealed class StaffManagementTests
             options.User.RequireUniqueEmail = true;
             options.Password.RequiredLength = 12;
         }).AddRoles<IdentityRole>().AddEntityFrameworkStores<AppDbContext>();
+        collection.AddSignalR();
+        collection.AddSingleton<MuzLoto.Web.Hubs.HubConnectionTracker>();
+        collection.AddScoped<MuzLoto.Web.Hubs.HubAccessRevoker>();
         collection.AddScoped<StaffManagement>();
         collection.AddScoped<StaffAccess>();
         using var provider = collection.BuildServiceProvider();

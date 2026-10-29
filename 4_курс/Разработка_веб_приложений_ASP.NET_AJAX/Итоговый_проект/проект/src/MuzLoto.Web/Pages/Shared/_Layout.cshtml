@@ -8,7 +8,8 @@
     <title>@ViewData["Title"] — МузЛото</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-<body>
+@{ var isStaff = User.IsInRole("Admin") || User.IsInRole("Manager"); }
+<body data-hub="@(isStaff ? "booking" : null)">
 <header class="topbar">
     <a class="brand" asp-page="/Home">МузЛото<span class="brand-point">.</span></a>
     <nav class="nav" aria-label="Основная навигация">
@@ -41,6 +42,7 @@
     @if (User.Identity?.IsAuthenticated == true)
     {
         <div class="user-box">
+            @if (isStaff) { <span class="online" data-online-count hidden></span> }
             <span class="user-name" title="Вы вошли как">@User.Identity.Name</span>
             <form method="post" asp-page="/Account/Logout"><button type="submit" class="small-button">Выйти</button></form>
         </div>

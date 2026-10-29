@@ -129,6 +129,8 @@ builder.Services.AddRazorPages(options =>
 builder.Services.AddControllers(o => o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
 
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<HubConnectionTracker>();
+builder.Services.AddScoped<HubAccessRevoker>();
 builder.Services.AddScoped<BookingWorkflow>();
 builder.Services.AddScoped<StaffAccess>();
 builder.Services.AddScoped<StaffManagement>();

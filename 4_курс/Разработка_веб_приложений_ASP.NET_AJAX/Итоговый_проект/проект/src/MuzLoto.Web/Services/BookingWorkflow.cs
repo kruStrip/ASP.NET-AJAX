@@ -389,7 +389,7 @@ public sealed class BookingWorkflow(
 
     private async Task NotifyAsync(Guid sessionId, string method, object payload)
     {
-        try { await hub.Clients.Group($"session:{sessionId}").SendCoreAsync(method, new[] { payload }); }
+        try { await hub.Clients.Group(BookingHub.GroupFor(sessionId)).SendCoreAsync(method, new[] { payload }); }
         catch (Exception ex) { logger.LogWarning(ex, "SignalR notification {Method} failed after database commit", method); }
     }
 
