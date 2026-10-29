@@ -5,6 +5,8 @@ namespace MuzLoto.Web.Domain;
 public class AppUser : IdentityUser
 {
     public string? FullName { get; set; }
+    /// <summary>When the user accepted the personal-data policy at self-registration (152-ФЗ); null for staff created by an admin.</summary>
+    public DateTimeOffset? PrivacyConsentAt { get; set; }
     public ICollection<EventStaffAssignment> EventAssignments { get; set; } = new List<EventStaffAssignment>();
     public ICollection<Booking> OwnedBookings { get; set; } = new List<Booking>();
 }

@@ -8,6 +8,9 @@
 <label asp-for="Input.Email">E-mail</label><input asp-for="Input.Email" type="email" autocomplete="email" /><span asp-validation-for="Input.Email" class="error-text"></span>
 <label asp-for="Input.Password">Пароль (от 6 символов, минимум одна цифра)</label><input asp-for="Input.Password" type="password" autocomplete="new-password" /><span asp-validation-for="Input.Password" class="error-text"></span>
 <label asp-for="Input.ConfirmPassword">Повторите пароль</label><input asp-for="Input.ConfirmPassword" type="password" autocomplete="new-password" /><span asp-validation-for="Input.ConfirmPassword" class="error-text"></span>
+<label class="check"><input asp-for="Input.AcceptPrivacy" /> <span>Я даю согласие на обработку персональных данных и ознакомлен(а) с
+@if (LinkRules.IsHttpUrl(Model.PrivacyPolicyUrl)) { <a href="@Model.PrivacyPolicyUrl" target="_blank" rel="noopener noreferrer">Политикой обработки персональных данных</a> } else { <span>Политикой обработки персональных данных</span> }</span></label>
+<span asp-validation-for="Input.AcceptPrivacy" class="error-text"></span>
 <button type="submit" class="button">Зарегистрироваться</button>
 </form>
 <p class="muted">Уже есть аккаунт? <a asp-page="/Account/Login">Войти</a></p>

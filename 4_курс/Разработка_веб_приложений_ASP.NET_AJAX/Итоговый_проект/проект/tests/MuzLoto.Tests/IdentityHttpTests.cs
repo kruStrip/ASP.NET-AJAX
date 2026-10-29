@@ -125,7 +125,7 @@ public sealed class IdentityHttpTests(AppFactory app)
         var response = await AppFactory.PostFormAsync(client, "/account/register", new()
         {
             ["Input.FullName"] = "Новый Игрок", ["Input.Email"] = email,
-            ["Input.Password"] = "abc123", ["Input.ConfirmPassword"] = "abc123"
+            ["Input.Password"] = "abc123", ["Input.ConfirmPassword"] = "abc123", ["Input.AcceptPrivacy"] = "true"
         });
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
@@ -139,6 +139,24 @@ public sealed class IdentityHttpTests(AppFactory app)
         var user = await users.FindByEmailAsync(email);
         Assert.NotNull(user);
         Assert.Equal(new[] { "User" }, await users.GetRolesAsync(user));
+        Assert.NotNull(user.PrivacyConsentAt);   // consent is recorded as evidence
+    }
+
+    [Fact]
+    public async Task Register_WithoutPrivacyConsent_IsRejectedOnServer()
+    {
+        var email = $"noconsent-{Guid.NewGuid():N}@example.invalid";
+        var response = await AppFactory.PostFormAsync(app.Browser(), "/account/register", new()
+        {
+            ["Input.FullName"] = "Без Согласия", ["Input.Email"] = email,
+            ["Input.Password"] = "abc123", ["Input.ConfirmPassword"] = "abc123"
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains("Нужно согласие на обработку персональных данных", html);
+        Assert.Contains("all-links.tilda.ws/myzloto_privacy", html);
+        using var scope = app.Services.CreateScope();
+        Assert.Null(await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByEmailAsync(email));
     }
 
     [Fact]
@@ -149,7 +167,7 @@ public sealed class IdentityHttpTests(AppFactory app)
         var response = await AppFactory.PostFormAsync(client, "/account/register", new()
         {
             ["Input.FullName"] = "Без Цифры", ["Input.Email"] = email,
-            ["Input.Password"] = "abcdef", ["Input.ConfirmPassword"] = "abcdef"
+            ["Input.Password"] = "abcdef", ["Input.ConfirmPassword"] = "abcdef", ["Input.AcceptPrivacy"] = "true"
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -165,7 +183,7 @@ public sealed class IdentityHttpTests(AppFactory app)
             new Dictionary<string, string>
             {
                 ["Input.FullName"] = "CSRF", ["Input.Email"] = $"csrf-{Guid.NewGuid():N}@example.invalid",
-                ["Input.Password"] = "abc123", ["Input.ConfirmPassword"] = "abc123"
+                ["Input.Password"] = "abc123", ["Input.ConfirmPassword"] = "abc123", ["Input.AcceptPrivacy"] = "true"
             }));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

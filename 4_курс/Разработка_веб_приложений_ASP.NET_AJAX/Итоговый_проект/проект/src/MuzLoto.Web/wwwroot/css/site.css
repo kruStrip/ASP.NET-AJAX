@@ -30,3 +30,4 @@ textarea{width:100%;background:var(--field);color:var(--text);border:0;border-ra
 :focus,:focus-visible{outline:none}
 a:focus-visible,button:focus-visible,.button:focus-visible{text-decoration:underline;text-underline-offset:3px}
 .table tbody tr:nth-child(even){background:rgba(0,0,0,.14)}
+.check{align-items:flex-start}.check input{margin-top:3px;flex:none}

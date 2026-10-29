@@ -11,7 +11,7 @@ namespace MuzLoto.Web.Pages.Account;
 
 /// <summary>Self-registration always grants the base "User" role; staff roles are assigned only by an admin.</summary>
 public class RegisterModel(
-    UserManager<AppUser> users, SignInManager<AppUser> signIn, AppDbContext db) : PageModel
+    UserManager<AppUser> users, SignInManager<AppUser> signIn, AppDbContext db, IConfiguration config) : PageModel
 {
     public const string DefaultRole = "User";
 
@@ -26,7 +26,12 @@ public class RegisterModel(
         public string Password { get; set; } = string.Empty;
         [Required(ErrorMessage = "Повторите пароль."), Compare(nameof(Password), ErrorMessage = "Пароли не совпадают."), DataType(DataType.Password)]
         public string ConfirmPassword { get; set; } = string.Empty;
+        /// <summary>Consent to personal-data processing (152-ФЗ) is required; checked on the server, not only in the browser.</summary>
+        [Range(typeof(bool), "true", "true", ErrorMessage = "Нужно согласие на обработку персональных данных.")]
+        public bool AcceptPrivacy { get; set; }
     }
+
+    public string? PrivacyPolicyUrl => config["Legal:PrivacyPolicyUrl"];
 
     public IActionResult OnGet() =>
         User.Identity?.IsAuthenticated == true ? RedirectToPage("/Home") : Page();
@@ -42,7 +47,11 @@ public class RegisterModel(
             return Page();
         }
 
-        var user = new AppUser { UserName = email, Email = email, FullName = Input.FullName.Trim() };
+        var user = new AppUser
+        {
+            UserName = email, Email = email, FullName = Input.FullName.Trim(),
+            PrivacyConsentAt = DateTimeOffset.UtcNow // evidence of consent
+        };
         await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct))
         {
             var created = await users.CreateAsync(user, Input.Password);

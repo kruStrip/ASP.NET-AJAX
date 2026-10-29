@@ -1,4 +1,5 @@
 @inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@inject IConfiguration Config
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -57,6 +58,7 @@
 </main>
 <footer class="footer">
     <span>© @DateTime.Now.Year МузЛото</span>
+    @if (LinkRules.IsHttpUrl(Config["Legal:PrivacyPolicyUrl"])) { <a href="@Config["Legal:PrivacyPolicyUrl"]" target="_blank" rel="noopener noreferrer">Политика обработки персональных данных</a> }
     <span class="muted">Система мероприятий и продажи билетов</span>
 </footer>
 @if (User.Identity?.IsAuthenticated == true)
