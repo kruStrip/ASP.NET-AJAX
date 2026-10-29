@@ -1,0 +1,79 @@
+@page "/events/{id:guid}"
+@model MuzLoto.Web.Pages.Events.DetailsModel
+@{ var s = Model.Session; ViewData["Title"] = s.Game.Title; var local = ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId); }
+<div class="page-heading"><div><div class="eyebrow">@local.ToString("dd.MM.yyyy HH:mm") (@s.TimeZoneId)</div><h1>@s.Game.Title</h1>
+<span class="status @(s.ArchivedAt.HasValue || s.CompletedAt.HasValue ? "cancelled" : s.SalesOpen ? "confirmed" : "pending")">@(s.ArchivedAt.HasValue ? "В архиве" : s.CompletedAt.HasValue ? "Игра прошла" : s.SalesOpen ? "Продажа открыта" : "Продажа закрыта")</span></div>
+@if (Model.IsAdmin)
+{
+    <div class="button-stack">
+        @if (!s.ArchivedAt.HasValue && !s.CompletedAt.HasValue) { <a class="button secondary" asp-page="/Events/Edit" asp-route-id="@s.Id">Изменить</a> }
+        <a class="button secondary" asp-page="/Events/Create" asp-route-gameId="@s.GameId">Добавить дату</a>
+        <a class="button secondary" asp-page="/Staff/Assignments" asp-route-sessionId="@s.Id">Сотрудники игры</a>
+    </div>
+}
+</div>
+<section class="panel game-card" data-session-id="@s.Id">
+    @if (Model.CoverUrl is not null) { <img class="cover" src="@Model.CoverUrl" alt="Обложка игры" /> }
+    @foreach (var paragraph in new[] { s.Game.Description1, s.Game.Description2, s.Game.Description3, s.Game.Description4, s.Game.Description5 })
+    {
+        if (!string.IsNullOrWhiteSpace(paragraph)) { <p>@paragraph</p> }
+    }
+    <dl class="facts">
+        <dt>Место</dt><dd>@s.Venue @if (LinkRules.IsHttpUrl(s.MapUrl)) { <a href="@s.MapUrl" target="_blank" rel="noopener noreferrer">2ГИС</a> }</dd>
+        <dt>Продолжительность</dt><dd>@(s.DurationMinutes / 60) ч @(s.DurationMinutes % 60 == 0 ? "" : $"{s.DurationMinutes % 60} мин")</dd>
+        <dt>Возраст</dt><dd>@(s.AgeLimit)+</dd>
+        <dt>Цена</dt><dd>@s.TicketPrice.ToString("N0") ₽</dd>
+        <dt>Мест</dt><dd>Продано <b>@Model.Sold</b> из @s.Capacity · осталось <b>@Model.Remaining</b></dd>
+        <dt>ID сеанса</dt><dd><code>@s.Id</code></dd>
+    </dl>
+    @if (Model.IsAdmin)
+    {
+        <form method="post" asp-page-handler="Cover" enctype="multipart/form-data" class="inline-form">
+            <label for="cover">@(Model.CoverUrl is null ? "Загрузить обложку" : "Заменить обложку") (JPEG, PNG, WebP, до 5 МБ)</label>
+            <input id="cover" name="cover" type="file" accept="image/jpeg,image/png,image/webp" required />
+            <button class="button secondary" type="submit">Сохранить обложку</button>
+        </form>
+    }
+</section>
+
+@if (Model.OtherDates.Count > 0)
+{
+    <section class="panel"><h2>Другие даты этой игры</h2>
+    <ul>@foreach (var d in Model.OtherDates) { <li><a asp-page="/Events/Details" asp-route-id="@d.Id">@ScheduleTime.ToLocal(d.StartsAt, d.TimeZoneId).ToString("dd.MM.yyyy HH:mm")</a> — @d.Venue @(d.ArchivedAt.HasValue ? "(архив)" : d.CompletedAt.HasValue ? "(прошла)" : "")</li> }</ul>
+    </section>
+}
+
+<section class="panel"><h2>Заявки и покупки</h2>
+@if (Model.Bookings.Count == 0) { <p class="muted">Заявок нет.</p> }
+else
+{
+    <div class="card-list">
+    @foreach (var b in Model.Bookings)
+    {
+        <article class="booking-card"><div><h2>@b.TeamName</h2><p>@b.CustomerName · @b.Quantity бил. · @b.Total.ToString("N0") ₽</p>
+        <span class="status @(b.Status == BookingStatus.Confirmed ? "confirmed" : "pending")">@(b.Status == BookingStatus.Confirmed ? "Оплачено" : "Ожидает оплаты")</span></div></article>
+    }
+    </div>
+}
+</section>
+
+@if (Model.IsAdmin)
+{
+    <section class="panel"><h2>Архив и удаление</h2>
+    <div class="actions">
+    @if (s.ArchivedAt.HasValue)
+    {
+        <form method="post" asp-page-handler="Unarchive"><button class="button secondary" type="submit">Вернуть из архива</button></form>
+    }
+    else
+    {
+        <form method="post" asp-page-handler="Archive" data-confirm="Перенести игру в архив? Продажи закроются, история сохранится."><button class="button secondary" type="submit">В архив</button></form>
+    }
+    @if (Model.Bookings.Count == 0)
+    {
+        <form method="post" asp-page-handler="Delete" data-confirm="Удалить эту дату без возможности восстановления?"><button class="button danger" type="submit">Удалить дату</button></form>
+    }
+    </div>
+    <p class="muted">Дату с заявками удалить нельзя — для неё используется архив.</p>
+    </section>
+}

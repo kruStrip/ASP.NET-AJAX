@@ -9,3 +9,14 @@ select{width:100%;background:#111315;color:var(--text);border:1px solid #53565c;
 .hero h1{margin-top:4px}
 @media(max-width:720px){.user-name{display:none}}
 .online{font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:999px;color:var(--accent)}
+.cover{width:100%;max-height:300px;object-fit:cover;border-radius:12px;margin-bottom:12px}
+.thumb{width:96px;height:64px;object-fit:cover;border-radius:8px;flex:none}
+.facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:16px 0}
+.facts dt{color:var(--muted)}.facts dd{margin:0}
+.game-card{margin-bottom:16px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-bottom:16px}
+.filters input,.filters select{width:auto;min-width:180px}
+textarea{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px;font:inherit}
+.card-main{display:flex;gap:16px;align-items:flex-start;min-width:0}
+.online{white-space:nowrap}
+@media(max-width:720px){.card-main .thumb{display:none}}

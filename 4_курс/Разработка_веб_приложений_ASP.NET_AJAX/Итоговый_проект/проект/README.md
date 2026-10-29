@@ -1,6 +1,6 @@
 # МузЛото — информационная система мероприятий
 
-**Текущее состояние: этап 7.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
+**Текущее состояние: этап 8a.** ASP.NET Core 8, PostgreSQL, Razor Pages, Identity (cookie + JWT), REST API v1/v2, AJAX, SignalR.
 Сборка, unit- и интеграционные тесты на PostgreSQL проходят в GitHub Actions. Подробный статус — [docs/STATUS.md](docs/STATUS.md),
 изменения ТЗ — [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -77,3 +77,7 @@ bash scripts/dev.sh
 ## Этап 7: полный REST API
 
 Мероприятия v1/v2 (`remainingTickets`, `mapUrl` в v2), заявки с владельцем из токена, сводка продаж, Swagger с двумя версиями и описаниями. Подробнее: [docs/STAGE7.md](docs/STAGE7.md).
+
+## Этап 8a: карточка игры
+
+Полная карточка игры и несколько дат одной игры, обложки, архив, поиск и фильтры. После обновления: `bash scripts/init-db.sh` (миграция `SessionArchive`). Подробнее: [docs/STAGE8A.md](docs/STAGE8A.md).

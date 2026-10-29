@@ -36,6 +36,8 @@ public class GameSession
     public int Capacity { get; set; }
     public bool SalesOpen { get; set; } = true;
     public DateTimeOffset? CompletedAt { get; set; }
+    /// <summary>Hidden from operational lists; used instead of deleting a session that has purchases.</summary>
+    public DateTimeOffset? ArchivedAt { get; set; }
     public ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public ICollection<GameImage> Images { get; set; } = new List<GameImage>();
     public ICollection<EventStaffAssignment> Staff { get; set; } = new List<EventStaffAssignment>();

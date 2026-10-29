@@ -16,7 +16,7 @@ public class CompleteModel(AppDbContext db, StaffAccess access, BookingWorkflow 
     {
         var since = DateTimeOffset.UtcNow.AddDays(-3);
         var query = db.GameSessions.Include(x => x.Game).AsNoTracking()
-            .Where(x => x.CompletedAt == null || x.CompletedAt >= since);
+            .Where(x => x.ArchivedAt == null && (x.CompletedAt == null || x.CompletedAt >= since));
         if (!User.IsInRole("Admin"))
         {
             var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;

@@ -22,7 +22,11 @@ public sealed class AppFactory : WebApplicationFactory<Program>
     {
         if (Environment.GetEnvironmentVariable("MUZLOTO_PG_TEST") != "1")
             throw new InvalidOperationException("Set MUZLOTO_PG_TEST=1 and use an isolated test database.");
+        // Uploaded covers go to a throwaway folder, never into the source tree.
+        Environment.SetEnvironmentVariable("Storage__ImagesPath", ImagesPath);
     }
+
+    public static readonly string ImagesPath = Path.Combine(Path.GetTempPath(), "muzloto-test-images");
 
     public HttpClient Browser() => CreateClient(new WebApplicationFactoryClientOptions
     {

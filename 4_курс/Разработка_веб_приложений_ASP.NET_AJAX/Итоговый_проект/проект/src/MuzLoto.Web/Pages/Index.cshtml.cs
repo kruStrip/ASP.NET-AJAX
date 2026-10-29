@@ -24,7 +24,7 @@ public class IndexModel(AppDbContext db) : PageModel
             sessions = sessions.Where(x => x.Staff.Any(a => a.UserId == userId));
             bookings = bookings.Where(x => x.GameSession.Staff.Any(a => a.UserId == userId));
         }
-        Upcoming = await sessions.CountAsync(x => x.CompletedAt == null, ct);
+        Upcoming = await sessions.CountAsync(x => x.CompletedAt == null && x.ArchivedAt == null, ct);
         Pending = await bookings.CountAsync(x => x.Status == BookingStatus.Pending, ct);
         SoldTickets = await bookings.Where(x => x.Status == BookingStatus.Confirmed)
             .SumAsync(x => (int?)x.Quantity, ct) ?? 0;

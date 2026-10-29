@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using System.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,55 +5,42 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using MuzLoto.Web.Data;
 using MuzLoto.Web.Domain;
-using MuzLoto.Web.Services;
 using Npgsql;
 
 namespace MuzLoto.Web.Pages.Events;
 
+/// <summary>Edits one date and the shared game card. The session keeps its ID, so covers and bookings stay attached.</summary>
 [Authorize(Roles = "Admin")]
 public class EditModel(AppDbContext db) : PageModel
 {
-    [BindProperty] public EditInput Input { get; set; } = new();
-    public sealed class EditInput
-    {
-        [Required, StringLength(200, MinimumLength = 3)] public string Title { get; set; } = string.Empty;
-        [Required] public DateTime LocalStart { get; set; }
-        [Required] public string TimeZoneId { get; set; } = "Etc/UTC";
-        [Required, StringLength(250)] public string Venue { get; set; } = string.Empty;
-        [Range(0, 1000000)] public decimal TicketPrice { get; set; }
-        [Range(1, 100000)] public int Capacity { get; set; }
-        public bool SalesOpen { get; set; }
-    }
+    [BindProperty] public SessionForm Input { get; set; } = new();
+    [BindProperty] public bool SalesOpen { get; set; }
     public Guid SessionId { get; private set; }
+    public int OtherDates { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken ct)
     {
         var s = await db.GameSessions.Include(x => x.Game).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (s is null) return NotFound();
-        SessionId = id;
-        Input = new EditInput
-        {
-            Title = s.Game.Title, LocalStart = ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId),
-            TimeZoneId = s.TimeZoneId, Venue = s.Venue,
-            TicketPrice = s.TicketPrice, Capacity = s.Capacity, SalesOpen = s.SalesOpen
-        };
+        await DescribeAsync(s, ct);
+        Input = SessionForm.From<SessionForm>(s);
+        SalesOpen = s.SalesOpen;
         return Page();
     }
+
     public async Task<IActionResult> OnPostAsync(Guid id, CancellationToken ct)
     {
-        SessionId = id;
-        DateTimeOffset start = default;
-        try { start = ScheduleTime.ToUtc(Input.LocalStart, Input.TimeZoneId); }
-        catch (Exception ex) when (ex is ArgumentException or TimeZoneNotFoundException)
-        { ModelState.AddModelError("Input.LocalStart", "Неверный часовой пояс или неоднозначное время."); }
-        if (!ModelState.IsValid) return Page();
+        var startsAt = Input.Validate(ModelState, requireTitle: true);
         try
         {
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             var s = await db.GameSessions.Include(x => x.Game).FirstOrDefaultAsync(x => x.Id == id, ct);
             if (s is null) return NotFound();
-            if (s.CompletedAt.HasValue)
+            await DescribeAsync(s, ct);
+            if (!ModelState.IsValid) return Page();
+            if (s.CompletedAt.HasValue || s.ArchivedAt.HasValue)
             {
-                ModelState.AddModelError(string.Empty, "Завершённую игру нельзя редактировать в этой версии.");
+                ModelState.AddModelError(string.Empty, "Завершённую или архивную игру нельзя редактировать.");
                 return Page();
             }
             var reserved = await db.Bookings.Where(x => x.GameSessionId == id && x.Status == BookingStatus.Confirmed)
@@ -64,22 +50,25 @@ public class EditModel(AppDbContext db) : PageModel
                 ModelState.AddModelError("Input.Capacity", $"Уже подтверждено билетов: {reserved}.");
                 return Page();
             }
-            s.Game.Title = Input.Title.Trim();
-            s.StartsAt = start;
-            s.TimeZoneId = Input.TimeZoneId;
-            s.Venue = Input.Venue.Trim();
-            s.TicketPrice = Input.TicketPrice;
-            s.Capacity = Input.Capacity;
-            s.SalesOpen = Input.SalesOpen;
+            Input.ApplyToGame(s.Game);
+            Input.ApplyToSession(s, startsAt);
+            s.SalesOpen = SalesOpen;
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.SerializationFailure)
+        catch (Exception ex) when (ex is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure } ||
+                                   ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure })
         {
             ModelState.AddModelError(string.Empty, "Данные изменились одновременно. Повторите сохранение.");
             return Page();
         }
         TempData["Notice"] = "Данные игры обновлены.";
-        return RedirectToPage("/Events/Index");
+        return RedirectToPage("/Events/Details", new { id });
+    }
+
+    private async Task DescribeAsync(GameSession s, CancellationToken ct)
+    {
+        SessionId = s.Id;
+        OtherDates = await db.GameSessions.CountAsync(x => x.GameId == s.GameId && x.Id != s.Id, ct);
     }
 }

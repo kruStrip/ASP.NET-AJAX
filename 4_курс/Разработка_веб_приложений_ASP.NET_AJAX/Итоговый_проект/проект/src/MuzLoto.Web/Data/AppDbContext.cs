@@ -19,7 +19,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
-        b.Entity<Game>().Property(x => x.Title).HasMaxLength(200).IsRequired();
+        b.Entity<Game>(e =>
+        {
+            e.Property(x => x.Title).HasMaxLength(200).IsRequired();
+            e.HasIndex(x => x.Title); // search by game title
+        });
         b.Entity<GameSession>(e =>
         {
             e.HasOne(x => x.Game).WithMany(g => g.Sessions).HasForeignKey(x => x.GameId).OnDelete(DeleteBehavior.Restrict);

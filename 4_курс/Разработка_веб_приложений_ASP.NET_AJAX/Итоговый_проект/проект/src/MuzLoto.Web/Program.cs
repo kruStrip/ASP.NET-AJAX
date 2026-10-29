@@ -145,6 +145,7 @@ builder.Services.AddScoped<StaffAccess>();
 builder.Services.AddScoped<StaffManagement>();
 builder.Services.AddScoped<SessionCrud>();
 builder.Services.AddScoped<SalesReport>();
+builder.Services.AddScoped<CoverImages>();
 builder.Services.AddScoped<JwtTokenService>();
 
 var app = builder.Build();
@@ -182,6 +183,14 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+// Uploaded covers: staff only, cache-busted by ?v=version.
+app.MapGet("/images/{id:guid}", async (Guid id, CoverImages images, HttpContext http, CancellationToken ct) =>
+{
+    var file = await images.OpenAsync(id, ct);
+    if (file is null) return Results.NotFound();
+    http.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+    return Results.File(file.Value.Path, file.Value.ContentType);
+}).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin,Manager" });
 app.MapRazorPages();
 app.MapControllers();
 app.MapHub<BookingHub>("/hubs/bookings");

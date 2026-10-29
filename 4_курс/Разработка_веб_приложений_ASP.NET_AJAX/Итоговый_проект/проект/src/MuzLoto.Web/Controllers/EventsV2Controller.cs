@@ -49,7 +49,7 @@ public sealed class EventsV2Controller(SessionCrud sessions) : ApiControllerBase
         new LocationDto { Name = s.Venue, TimeZone = s.TimeZoneId },
         new AvailabilityDto(s.Capacity, s.Reserved, Math.Max(0, s.Capacity - s.Reserved)),
         Math.Max(0, s.Capacity - s.Reserved), s.MapUrl,
-        s.TicketPrice, s.Completed ? "completed" : s.SalesOpen ? "open" : "closed",
+        s.TicketPrice, s.Archived ? "archived" : s.Completed ? "completed" : s.SalesOpen ? "open" : "closed",
         s.DurationMinutes, s.AgeLimit);
 
     /// <summary>Список доступных мероприятий: админ — все, менеджер — назначенные.</summary>

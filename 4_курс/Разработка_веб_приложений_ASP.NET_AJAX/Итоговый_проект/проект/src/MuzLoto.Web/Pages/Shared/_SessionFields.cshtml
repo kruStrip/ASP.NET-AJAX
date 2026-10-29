@@ -1,0 +1,22 @@
+@model MuzLoto.Web.Pages.Events.SessionForm
+@{ var showGame = ViewData["ShowGame"] as bool? ?? true; }
+@if (showGame)
+{
+    <h2>Игра</h2>
+    <p class="muted">Название и описание общие для всех дат этой игры.</p>
+    <label asp-for="Title">Название</label><input asp-for="Title" /><span asp-validation-for="Title" class="error-text"></span>
+    <label asp-for="Description1">Описание, абзац 1</label><textarea asp-for="Description1" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description1" class="error-text"></span>
+    <label asp-for="Description2">Описание, абзац 2</label><textarea asp-for="Description2" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description2" class="error-text"></span>
+    <label asp-for="Description3">Описание, абзац 3</label><textarea asp-for="Description3" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description3" class="error-text"></span>
+    <label asp-for="Description4">Описание, абзац 4</label><textarea asp-for="Description4" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description4" class="error-text"></span>
+    <label asp-for="Description5">Описание, абзац 5</label><textarea asp-for="Description5" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description5" class="error-text"></span>
+}
+<h2>Дата проведения</h2>
+<label asp-for="LocalStart">Местные дата и время</label><input asp-for="LocalStart" asp-format="{0:yyyy-MM-ddTHH:mm}" type="datetime-local" /><span asp-validation-for="LocalStart" class="error-text"></span>
+<label asp-for="TimeZoneId">Часовой пояс (IANA)</label><input asp-for="TimeZoneId" placeholder="Asia/Vladivostok" /><span asp-validation-for="TimeZoneId" class="error-text"></span>
+<label asp-for="Venue">Место проведения</label><input asp-for="Venue" /><span asp-validation-for="Venue" class="error-text"></span>
+<label asp-for="MapUrl">Ссылка на 2ГИС</label><input asp-for="MapUrl" type="url" placeholder="https://2gis.ru/..." /><span asp-validation-for="MapUrl" class="error-text"></span>
+<label asp-for="DurationMinutes">Продолжительность, минут</label><input asp-for="DurationMinutes" type="number" min="1" max="1440" /><span asp-validation-for="DurationMinutes" class="error-text"></span>
+<label asp-for="AgeLimit">Возрастное ограничение</label><input asp-for="AgeLimit" type="number" min="0" max="21" /><span asp-validation-for="AgeLimit" class="error-text"></span>
+<label asp-for="TicketPrice">Цена билета (₽)</label><input asp-for="TicketPrice" type="number" min="0" step="0.01" /><span asp-validation-for="TicketPrice" class="error-text"></span>
+<label asp-for="Capacity">Количество мест</label><input asp-for="Capacity" type="number" min="1" /><span asp-validation-for="Capacity" class="error-text"></span>

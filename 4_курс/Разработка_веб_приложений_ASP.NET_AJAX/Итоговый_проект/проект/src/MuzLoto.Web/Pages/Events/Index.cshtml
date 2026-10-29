@@ -1,18 +1,37 @@
 @page "/events"
 @model MuzLoto.Web.Pages.Events.IndexModel
 @{ ViewData["Title"] = "Мероприятия"; }
-<div class="page-heading"><div><div class="eyebrow">Актуальное расписание</div><h1>Все игры</h1></div>
+<div class="page-heading"><div><div class="eyebrow">Расписание</div><h1>Все игры</h1></div>
 @if (User.IsInRole("Admin")) { <a class="button" asp-page="/Events/Create">Добавить игру</a> }
 </div>
+<form method="get" class="filters" role="search">
+    <input asp-for="Q" type="search" placeholder="Название или место" aria-label="Поиск" />
+    <select asp-for="Status" aria-label="Статус">
+        @foreach (var (value, label) in IndexModel.Filters) { <option value="@value">@label</option> }
+    </select>
+    <button class="button secondary" type="submit">Найти</button>
+</form>
 <div class="card-list" data-live-list>
 @foreach (var row in Model.Sessions)
 {
-    <article class="booking-card" data-session-id="@row.Session.Id"><div><span class="eyebrow">@ScheduleTime.ToLocal(row.Session.StartsAt, row.Session.TimeZoneId).ToString("dd.MM.yyyy HH:mm") (@row.Session.TimeZoneId)</span><h2>@row.Session.Game.Title</h2>
-    <p class="muted">@row.Session.Venue · @row.Session.TicketPrice.ToString("N0") ₽ / билет</p>
-    <p>Продано: <b>@row.Reserved</b> / @row.Session.Capacity · Осталось: <b>@row.Remaining</b></p>
-    <span class="status @(row.Session.CompletedAt.HasValue ? "cancelled" : row.Session.SalesOpen ? "confirmed" : "pending")">@(row.Session.CompletedAt.HasValue ? "Игра прошла" : row.Session.SalesOpen ? "Продажа открыта" : "Продажа закрыта")</span></div>
-    @if (User.IsInRole("Admin")) { <div class="button-stack"><a class="button secondary" asp-page="/Events/Edit" asp-route-id="@row.Session.Id">Изменить</a><a class="button secondary" asp-page="/Staff/Assignments" asp-route-sessionId="@row.Session.Id">Сотрудники игры</a></div> }
+    var s = row.Session;
+    <article class="booking-card" data-session-id="@s.Id">
+    <div class="card-main">
+    @if (row.CoverUrl is not null) { <img class="thumb" src="@row.CoverUrl" alt="" loading="lazy" /> }
+    <div><span class="eyebrow">@ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId).ToString("dd.MM.yyyy HH:mm") (@s.TimeZoneId)</span><h2><a asp-page="/Events/Details" asp-route-id="@s.Id">@s.Game.Title</a></h2>
+    <p class="muted">@s.Venue · @s.TicketPrice.ToString("N0") ₽ / билет · @(s.AgeLimit)+</p>
+    <p>Продано: <b>@row.Reserved</b> / @s.Capacity · Осталось: <b>@row.Remaining</b></p>
+    <span class="status @(s.ArchivedAt.HasValue || s.CompletedAt.HasValue ? "cancelled" : s.SalesOpen ? "confirmed" : "pending")">@(s.ArchivedAt.HasValue ? "В архиве" : s.CompletedAt.HasValue ? "Игра прошла" : s.SalesOpen ? "Продажа открыта" : "Продажа закрыта")</span></div>
+    </div>
+    @if (User.IsInRole("Admin"))
+    {
+        <div class="button-stack">
+            @if (!s.ArchivedAt.HasValue && !s.CompletedAt.HasValue) { <a class="button secondary" asp-page="/Events/Edit" asp-route-id="@s.Id">Изменить</a> }
+            <a class="button secondary" asp-page="/Events/Create" asp-route-gameId="@s.GameId">Добавить дату</a>
+            <a class="button secondary" asp-page="/Staff/Assignments" asp-route-sessionId="@s.Id">Сотрудники игры</a>
+        </div>
+    }
     </article>
 }
-@if (Model.Sessions.Count == 0) { <p class="muted">Мероприятий пока нет.</p> }
+@if (Model.Sessions.Count == 0) { <p class="muted">Ничего не найдено.</p> }
 </div>

@@ -15,3 +15,6 @@ TestResults/
 
 # Browser client managed with npm; generated at setup time
 node_modules/
+
+# Uploaded session covers (Storage:ImagesPath default)
+App_Data/

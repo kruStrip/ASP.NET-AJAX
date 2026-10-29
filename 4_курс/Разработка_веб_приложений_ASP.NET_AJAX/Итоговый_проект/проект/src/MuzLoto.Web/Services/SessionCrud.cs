@@ -15,7 +15,7 @@ public sealed record SessionSnapshot(
     Guid Id, Guid GameId, string GameTitle, DateTimeOffset StartsAt,
     string TimeZoneId, string Venue, int Capacity, int Reserved,
     decimal TicketPrice, int DurationMinutes, int AgeLimit, bool SalesOpen,
-    bool Completed, string? MapUrl);
+    bool Completed, string? MapUrl, bool Archived = false);
 
 public sealed class SessionCrud(AppDbContext db)
 {
@@ -113,7 +113,7 @@ public sealed class SessionCrud(AppDbContext db)
     private static SessionSnapshot Map(GameSession s, int reserved) => new(
         s.Id, s.GameId, s.Game.Title, s.StartsAt, s.TimeZoneId, s.Venue,
         s.Capacity, reserved, s.TicketPrice, s.DurationMinutes, s.AgeLimit, s.SalesOpen,
-        s.CompletedAt.HasValue, s.MapUrl);
+        s.CompletedAt.HasValue, s.MapUrl, s.ArchivedAt.HasValue);
 
     private static void Update(GameSession s, SessionWrite input)
     {
@@ -137,8 +137,7 @@ public sealed class SessionCrud(AppDbContext db)
             i.DurationMinutes is < 1 or > 1_440 || i.AgeLimit is < 0 or > 21 ||
             i.StartsAt == default)
             throw new BusinessException("Некорректные параметры сеанса.", 400);
-        if (!string.IsNullOrWhiteSpace(i.MapUrl) && (i.MapUrl.Length > 500 ||
-            !Uri.TryCreate(i.MapUrl.Trim(), UriKind.Absolute, out var map) || map.Scheme is not ("http" or "https")))
+        if (!string.IsNullOrWhiteSpace(i.MapUrl) && (i.MapUrl.Length > 500 || !LinkRules.IsHttpUrl(i.MapUrl)))
             throw new BusinessException("Ссылка на карту должна быть адресом http(s).", 400);
         try { _ = TimeZoneInfo.FindSystemTimeZoneById(i.TimeZoneId); }
         catch (TimeZoneNotFoundException) { throw new BusinessException("Неизвестный часовой пояс.", 400); }
