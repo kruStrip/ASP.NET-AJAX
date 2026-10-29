@@ -391,6 +391,8 @@ namespace MuzLoto.Web.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Title");
+
                     b.ToTable("Games");
                 });
 
@@ -429,6 +431,9 @@ namespace MuzLoto.Web.Data.Migrations
 
                     b.Property<int>("AgeLimit")
                         .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Capacity")
                         .HasColumnType("integer");
