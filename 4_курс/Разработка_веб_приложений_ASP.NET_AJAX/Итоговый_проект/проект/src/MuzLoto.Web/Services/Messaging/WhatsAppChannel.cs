@@ -26,7 +26,8 @@ public sealed class WhatsAppChannel(HttpClient http, IConfiguration config) : IM
         {
             using var response = await http.GetAsync($"api/sessions/{Session}", ct);
             if (response.StatusCode == HttpStatusCode.NotFound) return new("NONE", null);
-            response.EnsureSuccessStatusCode();
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) return new("UNAUTHORIZED", null);
+            if (!response.IsSuccessStatusCode) return new("HTTP_" + (int)response.StatusCode, null);
             var json = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
             var me = json.TryGetProperty("me", out var m) && m.ValueKind == JsonValueKind.Object
                 ? (m.TryGetProperty("pushName", out var n) ? n.GetString() : null) ?? (m.TryGetProperty("id", out var id) ? id.GetString() : null)

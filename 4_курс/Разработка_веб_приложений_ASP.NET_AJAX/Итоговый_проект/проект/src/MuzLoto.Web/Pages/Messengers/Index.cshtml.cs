@@ -99,6 +99,9 @@ public class IndexModel(AppDbContext db, TelegramChannel telegram, WhatsAppChann
     {
         "WORKING" => "подключён", "SCAN_QR_CODE" => "ждёт сканирования QR-кода", "STARTING" => "запускается…",
         "STOPPED" or "NONE" => "не запущен", "FAILED" => "ошибка — запустите заново",
-        "NOT_CONFIGURED" => "не настроен на сервере", "UNAVAILABLE" => "шлюз недоступен", _ => status
+        "NOT_CONFIGURED" => "не настроен на сервере",
+        "UNAVAILABLE" => "шлюз не отвечает (контейнер waha не запущен или ещё запускается)",
+        "UNAUTHORIZED" => "шлюз отклонил ключ: WAHA_API_KEY у сайта и у шлюза не совпадают",
+        _ when status.StartsWith("HTTP_") => "шлюз ответил ошибкой " + status[5..], _ => status
     };
 }
