@@ -54,6 +54,11 @@
         @* A start that hangs (or a code nobody scanned) can always be begun again. *@
         <form method="post" asp-page-handler="WhatsAppStart"><button type="submit" class="button secondary">Перезапустить</button></form>
     }
+    @if (Model.RelayConfigured)
+    {
+        <form method="post" asp-page-handler="RelayTest" class="inline-form"><button type="submit" class="small-button">Проверить туннель через Cloudflare</button>
+        <span class="muted">займёт до минуты</span></form>
+    }
     @if (Model.WhatsApp.Status == "WORKING")
     {
         <form method="post" asp-page-handler="WhatsAppLogout" data-confirm="Отключить WhatsApp? Новые сообщения будут ждать повторного подключения.">

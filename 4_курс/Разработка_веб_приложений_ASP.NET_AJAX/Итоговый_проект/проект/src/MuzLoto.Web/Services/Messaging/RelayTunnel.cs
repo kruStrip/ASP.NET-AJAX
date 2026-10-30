@@ -122,6 +122,57 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
         return (Interlocked.Read(ref sent), Interlocked.Read(ref received));
     }
 
+    /// <summary>
+    /// Diagnostics for «Мессенджеры»: (1) 256 KB through the Worker's echo — the site → Cloudflare leg alone;
+    /// (2) the Worker uploads 200 KB to WhatsApp over a raw socket — the Cloudflare → WhatsApp leg alone.
+    /// </summary>
+    public async Task<string> SelfTestAsync(CancellationToken ct)
+    {
+        if (!IsConfigured) return "Туннель не настроен (нет WA_RELAY_URL / WA_RELAY_TOKEN).";
+        var report = new StringBuilder();
+        var baseUrl = RelayUrl!.TrimEnd('/');
+        baseUrl = baseUrl[..baseUrl.LastIndexOf('/')];
+        const int total = 256 * 1024;
+        var started = DateTime.UtcNow;
+        long echoed = 0;
+        try
+        {
+            using var ws = new ClientWebSocket();
+            ws.Options.SetRequestHeader("Authorization", "Bearer " + config["Relay:Token"]);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            await ws.ConnectAsync(new Uri(baseUrl + "/echo"), timeout.Token);
+            var receive = Task.Run(async () =>
+            {
+                var buffer = new byte[64 * 1024];
+                while (echoed < total)
+                {
+                    var r = await ws.ReceiveAsync(buffer.AsMemory(), timeout.Token);
+                    if (r.MessageType == WebSocketMessageType.Close) break;
+                    Interlocked.Add(ref echoed, r.Count);
+                }
+            }, timeout.Token);
+            var chunk = new byte[MaxMessage];
+            Random.Shared.NextBytes(chunk);
+            for (var sent = 0; sent < total; sent += chunk.Length)
+                await ws.SendAsync(chunk, WebSocketMessageType.Binary, true, timeout.Token);
+            try { await receive; } catch (OperationCanceledException) { }
+            report.Append($"Сайт → Cloudflare: вернулось {Interlocked.Read(ref echoed) / 1024} из {total / 1024} КБ за {(DateTime.UtcNow - started).TotalSeconds:0.0} с. ");
+        }
+        catch (Exception ex) { report.Append($"Сайт → Cloudflare: ошибка после {Interlocked.Read(ref echoed) / 1024} КБ — {ex.Message}. "); }
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+            using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl + "/check?host=web.whatsapp.com&upload=204800");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config["Relay:Token"]);
+            using var response = await http.SendAsync(request, ct);
+            report.Append("Cloudflare → WhatsApp: " + await response.Content.ReadAsStringAsync(ct));
+        }
+        catch (Exception ex) { report.Append("Cloudflare → WhatsApp: ошибка — " + ex.Message); }
+        return report.ToString();
+    }
+
     private bool Authorized(string[] lines)
     {
         var password = config["Relay:ProxyPassword"];

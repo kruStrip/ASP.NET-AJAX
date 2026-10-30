@@ -11,7 +11,7 @@ namespace MuzLoto.Web.Pages.Messengers;
 
 /// <summary>Connects the Telegram account and the WhatsApp number the site writes from, and shows what was sent.</summary>
 [Authorize(Roles = "Admin")]
-public class IndexModel(AppDbContext db, TelegramChannel telegram, WhatsAppChannel whatsApp) : PageModel
+public class IndexModel(AppDbContext db, TelegramChannel telegram, WhatsAppChannel whatsApp, RelayTunnel relay) : PageModel
 {
     public TelegramChannel Telegram => telegram;
     public bool TelegramReady { get; private set; }
@@ -52,6 +52,10 @@ public class IndexModel(AppDbContext db, TelegramChannel telegram, WhatsAppChann
         await whatsApp.StartAsync(ct);
         return "Сессия WhatsApp запущена. Отсканируйте QR-код телефоном с этим номером: WhatsApp → Связанные устройства → Привязка устройства.";
     });
+
+    public bool RelayConfigured => relay.IsConfigured;
+
+    public Task<IActionResult> OnPostRelayTestAsync(CancellationToken ct) => Run(() => relay.SelfTestAsync(ct));
 
     public Task<IActionResult> OnPostWhatsAppLogoutAsync(CancellationToken ct) => Run(async () =>
     {

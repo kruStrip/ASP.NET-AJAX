@@ -20,7 +20,22 @@ const isTelegramIp = host => /^\d+\.\d+\.\d+\.\d+$/.test(host) &&
   TELEGRAM_NETS.some(({ net, bits }) => (ipToInt(host) >>> (32 - bits)) === (ipToInt(net) >>> (32 - bits)));
 
 // Diagnostics: can this Worker reach the host by an ordinary HTTPS request, and by a raw TCP socket?
-async function check(host) {
+// Diagnostics: a WebSocket that sends every message straight back (tests the site → Cloudflare leg alone).
+function echo() {
+  const [client, server] = Object.values(new WebSocketPair());
+  try { server.binaryType = 'arraybuffer'; } catch {}
+  server.accept();
+  let bytes = 0, messages = 0;
+  server.addEventListener('message', event => {
+    const size = event.data.byteLength ?? event.data.size ?? event.data.length ?? 0;
+    bytes += size; messages++;
+    server.send(event.data);
+  });
+  server.addEventListener('close', () => console.log(`[echo] ${messages} messages, ${bytes} B echoed`));
+  return new Response(null, { status: 101, webSocket: client });
+}
+
+async function check(host, upload) {
   const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error(`timeout ${ms} ms`)), ms))]);
   const result = { host };
   const t1 = Date.now();
@@ -45,16 +60,38 @@ async function check(host) {
     result.tlsSocket = `answered in ${Date.now() - t3} ms: ${new TextDecoder().decode(value).split('\r\n')[0]}`;
     socket.close();
   } catch (err) { result.tlsSocket = `failed: ${err.message}`; }
+  // Large upload over a raw TLS socket (tests the Cloudflare → host leg with WhatsApp-sized writes).
+  if (upload > 0) {
+    const t4 = Date.now();
+    let written = 0;
+    try {
+      const socket = connect({ hostname: host, port: 443 }, { secureTransport: 'on' });
+      const writer = socket.writable.getWriter();
+      await writer.write(new TextEncoder().encode(`POST / HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/octet-stream\r\nContent-Length: ${upload}\r\nConnection: close\r\n\r\n`));
+      const chunk = new Uint8Array(4096);
+      await withTimeout((async () => {
+        while (written < upload) {
+          const part = chunk.subarray(0, Math.min(chunk.length, upload - written));
+          await writer.write(part);
+          written += part.length;
+        }
+      })(), 15000);
+      const { value } = await withTimeout(socket.readable.getReader().read(), 15000);
+      result.upload = `${written} B written in ${Date.now() - t4} ms, answer: ${new TextDecoder().decode(value).split('\r\n')[0]}`;
+      socket.close();
+    } catch (err) { result.upload = `failed after ${written} B: ${err.message}`; }
+  }
   return Response.json(result);
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname !== '/tunnel' && url.pathname !== '/check') return new Response('Not found', { status: 404 });
+    if (!['/tunnel', '/check', '/echo'].includes(url.pathname)) return new Response('Not found', { status: 404 });
     if (!env.RELAY_TOKEN || request.headers.get('Authorization') !== `Bearer ${env.RELAY_TOKEN}`)
       return new Response('Forbidden', { status: 403 });
-    if (url.pathname === '/check') return check(url.searchParams.get('host') ?? 'web.whatsapp.com');
+    if (url.pathname === '/check') return check(url.searchParams.get('host') ?? 'web.whatsapp.com', Number(url.searchParams.get('upload') ?? '0'));
+    if (url.pathname === '/echo') return echo();
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
       return new Response('Expected WebSocket', { status: 426 });
 
