@@ -149,3 +149,16 @@ select option:checked{background:#7c0103 linear-gradient(#7c0103,#7c0103);color:
 .select-menu li[aria-selected="true"]{background:#7c0103;font-weight:700}
 .select-menu li[aria-selected="true"].active{background:#930a0d}
 .select-menu li[aria-disabled="true"]{opacity:.5;cursor:default}
+/* Personal account: payment and receipt upload under an unpaid booking; staff see the receipt in the card. */
+.mine-card{align-items:flex-start}
+.mine-main{flex:1;min-width:0}
+.payment-block{margin-top:16px;padding-top:14px;border-top:1px solid var(--soft);display:grid;gap:8px}
+.payment-block .pay-qr{margin:6px 0}
+.payment-block .pay-text{text-align:left}
+.receipt-form{display:grid;gap:6px;max-width:460px}
+.receipt-form .button{justify-self:start}
+.receipt-sent{font-weight:700}
+.receipt{margin-top:10px}
+.receipt-thumb{display:block;max-width:220px;max-height:220px;border-radius:10px;background:#fff;object-fit:contain}
+.new-account{margin-bottom:18px}
+.new-account code{font-size:20px;letter-spacing:.06em;padding:2px 8px;border-radius:6px;background:var(--field)}

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MuzLoto.Web.Data;
@@ -33,11 +34,15 @@ public sealed class PublicBookingFormTests(AppFactory app)
         return s;
     }
 
+    /// <summary>Each test books with its own phone: the phone is the login of the customer's account.</summary>
+    private static string NewPhone() => "8 (9" + Random.Shared.Next(10, 99) + ") " + Random.Shared.Next(100, 999) + "-" + Random.Shared.Next(10, 99) + "-" + Random.Shared.Next(10, 99);
+    private static string Normalized(string phone) => ContactRules.NormalizePhone(phone)!;
+
     private static Dictionary<string, string> Fields(GameSession s, Guid? key = null, string quantity = "3", string telegram = "t.me/team_cat",
-        bool consent = true) => new()
+        bool consent = true, string? phone = null) => new()
     {
         ["Input.SessionId"] = s.Id.ToString(), ["Input.SubmissionKey"] = (key ?? Guid.NewGuid()).ToString(),
-        ["Input.Quantity"] = quantity, ["Input.Name"] = "ТЕСТ", ["Input.Phone"] = "8 (924) 240-27-20",
+        ["Input.Quantity"] = quantity, ["Input.Name"] = "ТЕСТ", ["Input.Phone"] = phone ?? NewPhone(),
         ["Input.Telegram"] = telegram, ["Input.Team"] = "МЯУ " + Guid.NewGuid().ToString("N")[..4],
         ["Input.AcceptPrivacy"] = consent ? "true" : "false"
     };
@@ -72,38 +77,144 @@ public sealed class PublicBookingFormTests(AppFactory app)
     }
 
     [Fact]
-    public async Task Review_ThenSubmit_CreatesOnePendingBooking_AndShowsPaymentScreen()
+    public async Task Submit_CreatesAccountByPhone_SignsIn_AndShowsThePasswordOnce()
     {
         var s = await SessionAsync();
         var client = app.Browser();
         var key = Guid.NewGuid();
+        var phone = NewPhone();
 
-        var review = await PostAsync(client, s, "Review", Fields(s, key));
+        var review = await PostAsync(client, s, "Review", Fields(s, key, phone: phone));
         Assert.Equal(HttpStatusCode.OK, review.StatusCode);
         var reviewHtml = WebUtility.HtmlDecode(await review.Content.ReadAsStringAsync());
         Assert.Contains("Пожалуйста, перепроверьте", reviewHtml);
-        Assert.Contains("+79242402720", reviewHtml);                      // normalised before the customer confirms
-        Assert.Contains("2 100 ₽", reviewHtml.Replace(' ', ' '));
+        Assert.Contains(Normalized(phone), reviewHtml);                    // normalised before the customer confirms
+        Assert.Contains("2 100 ₽", reviewHtml.Replace('\u00A0', ' '));
         Assert.Empty(await BookingsAsync(s.Id));                           // nothing saved until «К оплате»
 
-        var submit = await PostAsync(client, s, "Submit", Fields(s, key));
+        var submit = await PostAsync(client, s, "Submit", Fields(s, key, phone: phone));
         Assert.Equal(HttpStatusCode.Redirect, submit.StatusCode);
-        var payUrl = submit.Headers.Location!.OriginalString;
-        Assert.StartsWith("/oplata/", payUrl);
-        var again = await PostAsync(client, s, "Submit", Fields(s, key)); // double click / resent form
+        Assert.StartsWith("/bookings/mine", submit.Headers.Location!.OriginalString);   // straight into the personal account
+        var again = await PostAsync(client, s, "Submit", Fields(s, key, phone: phone)); // double click / resent form
         Assert.Equal(HttpStatusCode.Redirect, again.StatusCode);
 
         var booking = Assert.Single(await BookingsAsync(s.Id));
-        Assert.Equal((3, "+79242402720", "@team_cat", 700m), (booking.Quantity, booking.Phone, booking.Telegram, booking.TicketPriceSnapshot));
+        Assert.Equal((3, Normalized(phone), "@team_cat", 700m), (booking.Quantity, booking.Phone, booking.Telegram, booking.TicketPriceSnapshot));
         Assert.NotNull(booking.PrivacyConsentAt);
-        Assert.Null(booking.OwnerUserId);
+        using (var scope = app.Services.CreateScope())
+        {
+            var account = await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByNameAsync(Normalized(phone));
+            Assert.NotNull(account);
+            Assert.Equal(account!.Id, booking.OwnerUserId);
+        }
 
-        var pay = await app.Browser().GetAsync(payUrl);                    // the link works on its own, e.g. on another device
-        Assert.Equal(HttpStatusCode.OK, pay.StatusCode);
+        var mine = WebUtility.HtmlDecode(await client.GetStringAsync("/bookings/mine"));
+        var password = Regex.Match(mine, "<code>([a-z0-9]{10})</code>").Groups[1].Value;
+        Assert.NotEmpty(password);                                           // shown once…
+        Assert.Contains(Normalized(phone), mine);
+        Assert.Contains(booking.TeamName, mine);
+        Assert.Contains("загрузите чек", mine);
+        Assert.DoesNotContain("<code>", WebUtility.HtmlDecode(await client.GetStringAsync("/bookings/mine")));  // …and only once
+
+        // The phone and the generated password log in (typed in any format); a customer lands in the account.
+        var other = app.Browser();
+        var login = await AppFactory.PostFormAsync(other, "/account/login", new() { ["Input.Login"] = phone.Replace(" ", ""), ["Input.Password"] = password });
+        Assert.Equal("/bookings/mine", login.Headers.Location?.OriginalString);
+
+        // The customer sets an own password: 6+ characters with a digit is enough for customers.
+        var changed = await AppFactory.PostFormAsync(other, "/account/change-password", new()
+        { ["Input.CurrentPassword"] = password, ["Input.NewPassword"] = "kotik7", ["Input.ConfirmPassword"] = "kotik7" });
+        Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
+        var relogin = await AppFactory.PostFormAsync(app.Browser(), "/account/login", new() { ["Input.Login"] = Normalized(phone), ["Input.Password"] = "kotik7" });
+        Assert.Equal(HttpStatusCode.Redirect, relogin.StatusCode);
+    }
+
+    [Fact]
+    public async Task KnownPhone_IsNotSignedIn_BookingGoesToThatAccount_AndPayScreenTakesTheReceipt()
+    {
+        var s = await SessionAsync();
+        var phone = NewPhone();
+        await PostAsync(app.Browser(), s, "Submit", Fields(s, phone: phone));       // creates the account
+
+        var stranger = app.Browser();
+        var submit = await PostAsync(stranger, s, "Submit", Fields(s, phone: phone));
+        var payUrl = submit.Headers.Location!.OriginalString;
+        Assert.StartsWith("/oplata/", payUrl);                                       // no sign-in from a typed phone
+        Assert.Equal(HttpStatusCode.Redirect, (await stranger.GetAsync("/bookings/mine")).StatusCode);
+        var bookings = await BookingsAsync(s.Id);
+        Assert.Equal(2, bookings.Count);
+        Assert.Single(bookings.Select(x => x.OwnerUserId).Distinct());
+
+        var pay = await stranger.GetAsync(payUrl);
         Assert.True(pay.Headers.CacheControl?.NoStore);
-        var payHtml = WebUtility.HtmlDecode(await pay.Content.ReadAsStringAsync());
-        Assert.Contains("Заявка принята", payHtml);
-        Assert.Contains(booking.TeamName, payHtml);
+        Assert.Contains("Заявка принята", WebUtility.HtmlDecode(await pay.Content.ReadAsStringAsync()));
+        var upload = await UploadReceiptAsync(stranger, payUrl, payUrl + "?handler=Receipt", null, Png);
+        Assert.Equal(HttpStatusCode.Redirect, upload.StatusCode);
+        Assert.Contains("Чек отправлен", WebUtility.HtmlDecode(await stranger.GetStringAsync(payUrl)));
+    }
+
+    private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 5, 5, 5, 5];
+
+    private static async Task<HttpResponseMessage> UploadReceiptAsync(HttpClient client, string pageUrl, string postUrl, Guid? bookingId, byte[] bytes, string name = "check.png")
+    {
+        var form = new MultipartFormDataContent
+        {
+            { new StringContent(await AppFactory.AntiforgeryTokenAsync(client, pageUrl)), "__RequestVerificationToken" },
+            { new ByteArrayContent(bytes) { Headers = { ContentType = new MediaTypeHeaderValue("application/octet-stream") } }, "receipt", name }
+        };
+        if (bookingId is not null) form.Add(new StringContent(bookingId.ToString()!), "id");
+        return await client.PostAsync(postUrl, form);
+    }
+
+    [Fact]
+    public async Task Receipt_UploadedInTheAccount_IsShownToStaffInPendingCard_AndNobodyElse()
+    {
+        var s = await SessionAsync();
+        var client = app.Browser();
+        await PostAsync(client, s, "Submit", Fields(s));
+        var booking = Assert.Single(await BookingsAsync(s.Id));
+
+        var rejected = await UploadReceiptAsync(client, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, "not a receipt"u8.ToArray(), "x.png");
+        Assert.Equal(HttpStatusCode.Redirect, rejected.StatusCode);
+        Assert.Null(Assert.Single(await BookingsAsync(s.Id)).ReceiptKey);           // only images and PDF
+        var pdf = "%PDF-1.4 receipt"u8.ToArray();
+        Assert.Equal(HttpStatusCode.Redirect, (await UploadReceiptAsync(client, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, pdf, "check.pdf")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await UploadReceiptAsync(client, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, Png)).StatusCode);
+        Assert.Equal(1, Directory.GetFiles(Path.Combine(AppFactory.ImagesPath, "receipts"), $"{booking.Id:N}-*").Length);  // replaced, not piled up
+
+        var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
+        var pending = WebUtility.HtmlDecode(await admin.GetStringAsync("/bookings/pending?q=" + Uri.EscapeDataString(booking.TeamName)));
+        Assert.Contains("Чек клиента", pending);
+        Assert.Contains($"/receipts/{booking.Id}", pending);
+        Assert.Equal(Png, await (await admin.GetAsync($"/receipts/{booking.Id}")).Content.ReadAsByteArrayAsync());
+        Assert.Equal(Png, await (await client.GetAsync($"/receipts/{booking.Id}")).Content.ReadAsByteArrayAsync());   // the owner
+
+        Assert.Equal(HttpStatusCode.Redirect, (await app.Browser().GetAsync($"/receipts/{booking.Id}")).StatusCode);  // anonymous → login
+        var otherClient = await app.SignedInAsync(await app.CreateUserAsync("User"));
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/receipts/{booking.Id}")).StatusCode);
+        var outsider = await app.SignedInAsync(await app.CreateUserAsync("Manager"));                         // not assigned to the game
+        Assert.Equal(HttpStatusCode.NotFound, (await outsider.GetAsync($"/receipts/{booking.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await UploadReceiptAsync(otherClient, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, Png)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_ResetsACustomersPassword()
+    {
+        var s = await SessionAsync();
+        var phone = NewPhone();
+        await PostAsync(app.Browser(), s, "Submit", Fields(s, phone: phone));
+        string userId;
+        using (var scope = app.Services.CreateScope())
+            userId = (await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByNameAsync(Normalized(phone)))!.Id;
+
+        var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
+        var reset = await AppFactory.PostFormAsync(admin, "/staff?handler=ResetPassword", new() { ["userId"] = userId });
+        Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
+        var notice = WebUtility.HtmlDecode(await admin.GetStringAsync("/staff"));
+        var password = Regex.Match(notice, Regex.Escape(Normalized(phone)) + ": ([a-z0-9]{10})").Groups[1].Value;
+        Assert.NotEmpty(password);
+        var login = await AppFactory.PostFormAsync(app.Browser(), "/account/login", new() { ["Input.Login"] = phone, ["Input.Password"] = password });
+        Assert.Equal("/bookings/mine", login.Headers.Location?.OriginalString);
     }
 
     [Fact]

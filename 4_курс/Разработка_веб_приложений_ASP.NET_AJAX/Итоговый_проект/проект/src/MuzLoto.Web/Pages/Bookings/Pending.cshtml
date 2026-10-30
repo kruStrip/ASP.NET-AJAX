@@ -14,6 +14,16 @@
 <p><a href="tel:@b.Phone">@b.Phone</a> @if (!string.IsNullOrWhiteSpace(b.Telegram)) { <span>· Telegram: @b.Telegram</span> }</p>
 <p class="muted">Свободно мест на игре: @Model.RemainingBySession.GetValueOrDefault(b.GameSessionId) · ID @b.Id.ToString()[..8]</p>
 <span class="status pending">Ожидает подтверждения</span>
+@if (b.ReceiptUploadedAt is { } sent)
+{
+    var receiptUrl = $"/receipts/{b.Id}?v={sent.ToUnixTimeSeconds()}";
+    <div class="receipt">
+        <p><b>Чек клиента</b> · загружен @ScheduleTime.Format(sent, b.GameSession.TimeZoneId)</p>
+        @if (CoverImages.IsPdf(b.ReceiptKey)) { <a class="button secondary" href="@receiptUrl" target="_blank" rel="noopener">Открыть PDF-чек</a> }
+        else { <a href="@receiptUrl" target="_blank" rel="noopener" title="Открыть в полном размере"><img class="receipt-thumb" src="@receiptUrl" alt="Чек или скриншот оплаты" loading="lazy" /></a> }
+    </div>
+}
+else { <p class="muted">Чек ещё не загружен.</p> }
 </div><div class="button-stack">
 <form method="post" asp-page-handler="Confirm" data-ajax-action="booking-confirm" data-confirm="Вы проверили получение оплаты? После подтверждения будут заняты места."><input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Подтвердить оплату</button></form>
 <form method="post" asp-page-handler="Quantity" data-ajax-action="booking-quantity" class="inline-form"><input type="hidden" name="id" value="@b.Id" />

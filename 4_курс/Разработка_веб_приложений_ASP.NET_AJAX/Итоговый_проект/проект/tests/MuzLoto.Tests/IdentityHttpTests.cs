@@ -76,7 +76,7 @@ public sealed class AppFactory : WebApplicationFactory<Program>
         {
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["Input.Email"] = user.Email!, ["Input.Password"] = password, ["__RequestVerificationToken"] = token
+                ["Input.Login"] = user.Email!, ["Input.Password"] = password, ["__RequestVerificationToken"] = token
             })
         };
         login.Headers.Add("Cookie", antiforgeryCookie);
@@ -90,7 +90,7 @@ public sealed class AppFactory : WebApplicationFactory<Program>
         var client = Browser();
         var response = await PostFormAsync(client, "/account/login", new()
         {
-            ["Input.Email"] = user.Email!, ["Input.Password"] = password
+            ["Input.Login"] = user.Email!, ["Input.Password"] = password
         });
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         return client;

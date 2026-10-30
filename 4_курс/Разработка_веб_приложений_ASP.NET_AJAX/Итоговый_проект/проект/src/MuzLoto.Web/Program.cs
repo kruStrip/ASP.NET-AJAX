@@ -21,7 +21,9 @@ var connection = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connection));
 builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
 {
-    options.User.RequireUniqueEmail = true;
+    // Clients created by the booking form log in by phone and have no e-mail, so Identity must not require one.
+    // E-mail uniqueness is still checked by self-registration and staff creation.
+    options.User.RequireUniqueEmail = false;
     options.SignIn.RequireConfirmedAccount = false;
     options.Password.RequiredLength = 6;
     options.Password.RequireDigit = true;
@@ -161,6 +163,7 @@ builder.Services.AddScoped<SalesReport>();
 builder.Services.AddScoped<CoverImages>();
 builder.Services.AddScoped<FormDesignerWebhook>();
 builder.Services.AddScoped<PublicSchedule>();
+builder.Services.AddScoped<ClientAccounts>();
 builder.Services.AddSingleton<PaymentLinks>();
 
 // The public booking form is the only anonymous write: limit POSTs per client address against spam.
@@ -234,6 +237,17 @@ app.MapGet("/images/{id:guid}", async (Guid id, CoverImages images, HttpContext 
     http.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
     return Results.File(file.Value.Path, file.Value.ContentType);
 }).AllowAnonymous();
+// Payment receipts: the booking's owner, or staff who manage that game. Never public, never cached by proxies.
+app.MapGet("/receipts/{id:guid}", async (Guid id, AppDbContext db, CoverImages files, StaffAccess access, HttpContext http, CancellationToken ct) =>
+{
+    var booking = await db.Bookings.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
+    if (booking is null) return Results.NotFound();
+    var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (booking.OwnerUserId != userId && !await access.CanManageAsync(http.User, booking.GameSessionId, ct)) return Results.NotFound();
+    if (files.OpenReceipt(booking) is not { } file) return Results.NotFound();
+    http.Response.Headers.CacheControl = "private, no-store";
+    return Results.File(file.Path, file.ContentType);
+}).RequireAuthorization();
 // QR code on the payment screen; revalidated so a replaced code shows at once.
 app.MapGet("/oplata/qr", async (CoverImages images, HttpContext http, CancellationToken ct) =>
 {

@@ -50,6 +50,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(x => x.CustomerName).HasMaxLength(150).IsRequired();
             e.Property(x => x.Phone).HasMaxLength(40).IsRequired();
             e.Property(x => x.Telegram).HasMaxLength(100);
+            e.Property(x => x.ReceiptKey).HasMaxLength(500);
             e.Property(x => x.TicketPriceSnapshot).HasPrecision(12, 2);
             e.HasIndex(x => new { x.GameSessionId, x.Status });
             e.HasIndex(x => x.CreatedAt);

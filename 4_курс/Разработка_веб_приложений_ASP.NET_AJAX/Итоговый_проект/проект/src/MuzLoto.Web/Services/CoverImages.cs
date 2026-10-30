@@ -41,8 +41,41 @@ public sealed class CoverImages(AppDbContext db, IConfiguration config, IWebHost
 
     private static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
-        ".png" => "image/png", ".webp" => "image/webp", ".svg" => "image/svg+xml", _ => "image/jpeg"
+        ".png" => "image/png", ".webp" => "image/webp", ".svg" => "image/svg+xml", ".pdf" => "application/pdf", _ => "image/jpeg"
     };
+
+    // ---- Payment receipts uploaded by customers ----
+
+    public const long MaxReceiptBytes = 10 * 1024 * 1024;
+
+    /// <summary>Stores (or replaces) a booking's receipt: an image or a PDF up to 10 MB, checked by its content.</summary>
+    public async Task SaveReceiptAsync(Booking booking, IFormFile file, CancellationToken ct = default)
+    {
+        if (file.Length is 0 or > MaxReceiptBytes)
+            throw new BusinessException("Файл пустой или больше 10 МБ.", 400);
+        var header = new byte[12];
+        await using (var probe = file.OpenReadStream())
+            _ = await probe.ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false, ct);
+        var extension = DetectExtension(header) ?? (header is [(byte)'%', (byte)'P', (byte)'D', (byte)'F', ..] ? ".pdf" : null)
+            ?? throw new BusinessException("Загрузите фото или скриншот (JPEG, PNG, WebP) или PDF-чек.", 400);
+        var previous = booking.ReceiptKey is { } old ? FullPath(old) : null;
+        booking.ReceiptKey = $"receipts/{booking.Id:N}-{DateTime.UtcNow:yyyyMMddHHmmssfff}{extension}";
+        booking.ReceiptUploadedAt = DateTimeOffset.UtcNow;
+        await WriteAsync(file, booking.ReceiptKey, ct);
+        var target = FullPath(booking.ReceiptKey);
+        try { await db.SaveChangesAsync(ct); }
+        catch { File.Delete(target); throw; }
+        if (previous is not null && previous != target) File.Delete(previous);
+    }
+
+    public (string Path, string ContentType)? OpenReceipt(Booking booking)
+    {
+        if (booking.ReceiptKey is null) return null;
+        var path = FullPath(booking.ReceiptKey);
+        return File.Exists(path) ? (path, ContentType(path)) : null;
+    }
+
+    public static bool IsPdf(string? key) => key?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true;
 
     // ---- Payment QR code shown on the payment screen ----
 

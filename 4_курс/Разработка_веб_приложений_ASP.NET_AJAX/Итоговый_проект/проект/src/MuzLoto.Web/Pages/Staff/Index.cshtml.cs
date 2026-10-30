@@ -58,6 +58,26 @@ public sealed class IndexModel(UserManager<AppUser> users, AppDbContext db, Staf
         return RedirectToPage();
     }
 
+    /// <summary>A customer forgot the password: a new one is generated and shown to the admin once, who passes it on.</summary>
+    public async Task<IActionResult> OnPostResetPasswordAsync(string userId, [FromServices] ClientAccounts accounts)
+    {
+        var user = await users.FindByIdAsync(userId);
+        if (user is null) return NotFound();
+        if (await users.IsInRoleAsync(user, "Admin") || await users.IsInRoleAsync(user, "Manager"))
+        {
+            TempData["Error"] = "Пароль сотрудника не сбрасывается здесь: сотрудник меняет его сам в «Сменить пароль».";
+            return RedirectToPage();
+        }
+        var password = await accounts.ResetPasswordAsync(user);
+        TempData["Notice"] = $"Новый пароль для {user.UserName}: {password} — передайте его клиенту. Клиент может сменить его в «Сменить пароль».";
+        return RedirectToPage();
+    }
+
+    public static string RoleName(string role) => role switch
+    {
+        "Admin" => "Администратор", "Manager" => "Менеджер", _ => "Пользователь"
+    };
+
     private async Task LoadAsync(CancellationToken ct)
     {
         var all = await users.Users.AsNoTracking().OrderBy(x => x.Email).Take(300).ToListAsync(ct);
@@ -68,7 +88,7 @@ public sealed class IndexModel(UserManager<AppUser> users, AppDbContext db, Staf
         foreach (var user in all)
         {
             var roles = await users.GetRolesAsync(user);
-            rows.Add(new StaffRow(user.Id, user.Email ?? "", user.FullName ?? "",
+            rows.Add(new StaffRow(user.Id, user.Email ?? user.UserName ?? "", user.FullName ?? "",
                 roles.FirstOrDefault() ?? "User", counts.GetValueOrDefault(user.Id)));
         }
         Employees = rows;

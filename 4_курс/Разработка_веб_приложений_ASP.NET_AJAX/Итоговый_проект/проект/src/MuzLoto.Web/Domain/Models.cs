@@ -77,6 +77,9 @@ public class Booking
     public DateTimeOffset? CancelledAt { get; set; }
     /// <summary>When the customer accepted the personal-data policy in the site's booking form (152-ФЗ).</summary>
     public DateTimeOffset? PrivacyConsentAt { get; set; }
+    /// <summary>Payment receipt or screenshot the customer uploaded (file key under Storage:ImagesPath).</summary>
+    public string? ReceiptKey { get; set; }
+    public DateTimeOffset? ReceiptUploadedAt { get; set; }
     public Payment? Payment { get; set; }
     public ICollection<BookingStatusHistory> StatusHistory { get; set; } = new List<BookingStatusHistory>();
     public ICollection<ExternalSubmission> ExternalSubmissions { get; set; } = new List<ExternalSubmission>();

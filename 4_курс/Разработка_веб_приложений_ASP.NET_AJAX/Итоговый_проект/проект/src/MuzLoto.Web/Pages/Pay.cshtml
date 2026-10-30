@@ -1,7 +1,8 @@
 @page "/oplata/{token}"
 @model MuzLoto.Web.Pages.PayModel
 @using MuzLoto.Web.Domain
-@{ ViewData["Title"] = "Оплата"; var b = Model.Booking; var settings = Model.Settings; }
+@{ ViewData["Title"] = "Оплата"; var b = Model.Booking; var settings = Model.Settings;
+   var uploadUrl = Url.Page("/Pay", "Receipt", new { token = Model.Token })!; }
 <section class="panel booking-form">
     <img class="booking-logo" src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото" width="200" height="200" />
     @switch (b.Status)
@@ -28,11 +29,7 @@
     @if (b.Status == BookingStatus.Pending)
     {
         <h2 class="center">Оплата</h2>
-        <p class="center">Чтобы забронировать за вами время и дату, нужна оплата в размере <strong>@Model.Total.ToString("#,0.##") ₽</strong>
-            (@b.TicketPriceSnapshot.ToString("#,0.##") ₽ за каждого участника).</p>
-        @if (settings?.QrStorageKey is not null) { <img class="pay-qr" src="/oplata/qr?v=@settings.QrVersion" alt="QR-код для оплаты" /> }
-        @if (!string.IsNullOrWhiteSpace(settings?.Instructions)) { <p class="pay-text">@settings.Instructions</p> }
-        else if (settings?.QrStorageKey is null) { <p class="center">Реквизиты для оплаты пришлёт менеджер.</p> }
+        <partial name="_PaymentBlock" model="new MuzLoto.Web.Pages.Shared.PaymentBlockModel(b, settings, uploadUrl, Model.IsOwner)" />
         <p class="muted center">Бронь подтверждается после того, как менеджер проверит оплату. Сохраните эту страницу — по ссылке будет виден статус заявки.</p>
     }
 </section>

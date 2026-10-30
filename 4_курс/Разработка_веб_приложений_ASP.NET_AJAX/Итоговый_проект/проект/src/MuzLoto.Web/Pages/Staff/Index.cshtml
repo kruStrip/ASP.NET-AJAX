@@ -24,7 +24,7 @@
 {
 <article class="booking-card"><div>
 <strong>@employee.FullName</strong><p class="muted">@employee.Email</p>
-<span class="status confirmed">@employee.Role</span>
+<span class="status confirmed">@IndexModel.RoleName(employee.Role)</span>
 @if (employee.Role == "Manager") { <p class="muted">Назначенных игр: @employee.AssignedGames</p> }
 </div><form method="post" asp-page-handler="ChangeRole" class="inline-form" data-confirm="Изменить роль сотрудника? Его текущие сессии будут отозваны, потребуется повторный вход.">
 <input type="hidden" name="userId" value="@employee.Id" />
@@ -34,7 +34,13 @@
 <option value="Manager" selected="@(employee.Role == "Manager")">Менеджер</option>
 <option value="User" selected="@(employee.Role == "User")">Пользователь</option>
 </select><button class="button secondary" type="submit">Сохранить роль</button>
-</form></article>
+</form>
+@if (employee.Role == "User")
+{
+<form method="post" asp-page-handler="ResetPassword" data-confirm="Сгенерировать клиенту новый пароль? Старый перестанет подходить.">
+<input type="hidden" name="userId" value="@employee.Id" /><button class="button secondary" type="submit">Сбросить пароль</button></form>
+}
+</article>
 }
 </div></section>
-<p class="muted">Назначить менеджера на конкретную игру можно из раздела «Игры» → «Сотрудники игры».</p>
+<p class="muted">Назначить менеджера на конкретную игру можно из раздела «Текущие игры» → «Сотрудники игры».</p>

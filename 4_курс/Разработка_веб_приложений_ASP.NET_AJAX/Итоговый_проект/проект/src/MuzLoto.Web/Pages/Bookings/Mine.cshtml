@@ -1,16 +1,33 @@
 @page "/bookings/mine"
 @model MuzLoto.Web.Pages.Bookings.MineModel
-@{ ViewData["Title"] = "Мои заявки"; }
+@{ ViewData["Title"] = "Мои заявки"; var uploadUrl = Url.Page("/Bookings/Mine", "Receipt")!; }
 <div class="page-heading"><div><div class="eyebrow">Личный раздел</div><h1>Мои заявки</h1>
 <p class="muted">Здесь видны только заявки, оформленные под вашей учётной записью.</p></div></div>
+@if (TempData["NewPassword"] is string password)
+{
+    @* Shown once, right after the booking form created the account. *@
+    <section class="panel new-account" role="status">
+        <h2>Ваш личный кабинет создан</h2>
+        <p>Сохраните данные для входа — пароль показывается только один раз.</p>
+        <dl class="review">
+            <div><dt>Логин:</dt><dd>@TempData["NewLogin"]</dd></div>
+            <div><dt>Пароль:</dt><dd><code>@password</code> <button type="button" class="small-button" data-copy="@password">Скопировать</button></dd></div>
+        </dl>
+        <p><a asp-page="/Account/ChangePassword">Задать свой пароль</a></p>
+    </section>
+}
 <div class="card-list">
 @foreach (var b in Model.Bookings)
 {
-<article class="booking-card"><div>
+<article class="booking-card mine-card" id="booking-@b.Id.ToString("N")"><div class="mine-main">
 <span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.Format(b.GameSession.StartsAt, b.GameSession.TimeZoneId)</span>
 <h2>@b.TeamName</h2>
 <p>@b.Quantity бил. · @((b.Quantity * b.TicketPriceSnapshot).ToString("N2")) ₽ · @b.GameSession.Venue</p>
 <span class="status @MineModel.StatusClass(b.Status)">@MineModel.StatusText(b.Status)</span>
+@if (b.Status == MuzLoto.Web.Domain.BookingStatus.Pending)
+{
+    <partial name="_PaymentBlock" model="new MuzLoto.Web.Pages.Shared.PaymentBlockModel(b, Model.Settings, uploadUrl, true)" />
+}
 </div>
 @if (Model.Editable.Contains(b.Id)) { <a class="button secondary" asp-page="/Bookings/Edit" asp-route-id="@b.Id">Изменить</a> }
 </article>

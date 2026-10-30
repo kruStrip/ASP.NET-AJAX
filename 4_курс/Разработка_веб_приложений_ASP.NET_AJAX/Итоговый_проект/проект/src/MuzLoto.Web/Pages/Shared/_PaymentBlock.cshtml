@@ -1,0 +1,27 @@
+@using MuzLoto.Web.Domain
+@model MuzLoto.Web.Pages.Shared.PaymentBlockModel
+@* What to pay and how, plus the receipt upload. Used on «Мои заявки» and on the payment screen. *@
+@{ var b = Model.Booking; var settings = Model.Settings; var total = b.TicketPriceSnapshot * b.Quantity; }
+<div class="payment-block">
+    <p>Чтобы забронировать за вами время и дату, нужна оплата в размере <strong>@total.ToString("#,0.##") ₽</strong>
+        (@b.TicketPriceSnapshot.ToString("#,0.##") ₽ за каждого участника).</p>
+    @if (settings?.QrStorageKey is not null) { <img class="pay-qr" src="/oplata/qr?v=@settings.QrVersion" alt="QR-код для оплаты" /> }
+    @if (!string.IsNullOrWhiteSpace(settings?.Instructions)) { <p class="pay-text">@settings.Instructions</p> }
+    else if (settings?.QrStorageKey is null) { <p>Реквизиты для оплаты пришлёт менеджер.</p> }
+
+    @if (b.ReceiptUploadedAt is { } sent)
+    {
+        <p class="receipt-sent">Чек отправлен @ScheduleTime.Format(sent, b.GameSession.TimeZoneId). Менеджер проверит оплату и подтвердит бронь.</p>
+        @if (Model.CanViewReceipt) { <p><a href="/receipts/@b.Id?v=@sent.ToUnixTimeSeconds()" target="_blank" rel="noopener">Посмотреть чек</a></p> }
+    }
+    else
+    {
+        <p><strong>После оплаты загрузите чек или скриншот перевода</strong> — так мы быстрее подтвердим бронь.</p>
+    }
+    <form method="post" action="@Model.UploadUrl" asp-antiforgery="true" enctype="multipart/form-data" class="receipt-form">
+        <input type="hidden" name="id" value="@b.Id" />
+        <label for="receipt-@b.Id">@(b.ReceiptUploadedAt is null ? "Чек или скриншот" : "Заменить чек") (фото, скриншот или PDF, до 10 МБ)</label>
+        <input id="receipt-@b.Id" type="file" name="receipt" accept="image/jpeg,image/png,image/webp,application/pdf" required />
+        <button type="submit" class="button">Отправить</button>
+    </form>
+</div>

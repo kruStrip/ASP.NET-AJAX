@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using MuzLoto.Web.Domain;
 using MuzLoto.Web.Services;
 
 namespace MuzLoto.Web.Pages;
@@ -10,7 +12,8 @@ namespace MuzLoto.Web.Pages;
 /// The customer booking form (replaces FormDesigner): date → game card → contacts → «Пожалуйста, перепроверьте»
 /// → «К оплате». The booking is created as Pending and takes no seats until staff confirm the payment.
 /// </summary>
-public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, PaymentLinks paymentLinks, IConfiguration config) : PageModel
+public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, PaymentLinks paymentLinks, IConfiguration config,
+    ClientAccounts accounts, SignInManager<AppUser> signIn) : PageModel
 {
     public enum Steps { Form, Review }
 
@@ -68,11 +71,33 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
         if (!string.IsNullOrEmpty(Input.Website)) return RedirectToPage(); // bot: pretend nothing happened
         try
         {
+            // The booking goes to the customer's personal account: the signed-in one, or the account of this phone.
+            // A new phone gets an account with a generated password and is signed in at once. An existing phone is
+            // never signed in from the form (anyone could type someone else's number): that customer pays and
+            // uploads the receipt on the payment screen and sees the booking after signing in.
+            var ownerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            ClientAccounts.Result? account = null;
+            if (ownerId is null)
+            {
+                account = await accounts.FindOrCreateAsync(Input.Phone!, Input.Name!);
+                ownerId = account.User.Id;
+            }
             var (bookingId, _) = await workflow.ReceiveAsync(new IncomingBooking(
                 "web-" + Input.SubmissionKey.ToString("N"), Selected!.Id, Input.Team!, Input.Name!, Input.Phone!,
                 Input.Telegram, Input.Quantity!.Value, BookingSources.Web,
-                OwnerUserId: User.FindFirstValue(ClaimTypes.NameIdentifier), PrivacyConsentAt: DateTimeOffset.UtcNow), ct);
-            return RedirectToPage("/Pay", new { token = paymentLinks.Create(bookingId) });
+                OwnerUserId: ownerId, PrivacyConsentAt: DateTimeOffset.UtcNow), ct);
+            if (account is { NewPassword: { } password })
+            {
+                await signIn.SignInAsync(account.User, isPersistent: true);
+                TempData["NewLogin"] = account.User.UserName;
+                TempData["NewPassword"] = password;     // shown once on «Мои заявки»
+            }
+            else if (account is not null)
+            {
+                TempData["Notice"] = "Этот номер уже зарегистрирован. Оплатите и загрузите чек здесь; заявку также видно в личном кабинете — вход по номеру телефона.";
+                return RedirectToPage("/Pay", new { token = paymentLinks.Create(bookingId) });
+            }
+            return RedirectToPage("/Bookings/Mine", null, $"booking-{bookingId:N}");
         }
         catch (BusinessException ex)
         {
