@@ -127,3 +127,8 @@ p a,label a,li a,.muted a,.footer a{text-decoration:underline;text-underline-off
 .check input{accent-color:var(--text)}
 .alert.success{background:rgba(0,0,0,.28);color:var(--text);box-shadow:none}
 .game-text p,.pre-line{white-space:pre-line}
+/* Password field with the show/hide eye button inside it. */
+.password-field{position:relative;display:block}
+.password-field input{width:100%;padding-right:48px}
+.password-toggle{position:absolute;top:50%;right:6px;transform:translateY(-50%);display:grid;place-items:center;width:38px;height:38px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
+.password-toggle:hover{color:var(--text);background:var(--soft)}

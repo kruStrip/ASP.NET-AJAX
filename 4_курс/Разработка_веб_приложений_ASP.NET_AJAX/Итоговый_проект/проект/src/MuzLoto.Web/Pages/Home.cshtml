@@ -88,7 +88,7 @@
                 <span asp-validation-for="Input.Name" class="error-text"></span>
 
                 <label asp-for="Input.Phone">Введите ваш телефон <span class="req">*</span></label>
-                <input asp-for="Input.Phone" type="tel" placeholder="+7 900 000-00-00" autocomplete="tel" maxlength="40" />
+                <input asp-for="Input.Phone" type="tel" inputmode="tel" placeholder="+7 (900) 000-00-00" autocomplete="tel" maxlength="40" data-phone-mask />
                 <span asp-validation-for="Input.Phone" class="error-text"></span>
 
                 <label asp-for="Input.Telegram">Введите ваш Telegram ник</label>

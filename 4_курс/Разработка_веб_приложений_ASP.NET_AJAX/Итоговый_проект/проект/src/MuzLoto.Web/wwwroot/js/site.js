@@ -117,6 +117,53 @@
     update();
   });
 
+  // Phone fields "+7 (900) 000-00-00": digits are typed, the brackets, spaces and dashes appear by themselves.
+  // A pasted 8 900 … or +7 900 … is understood too; the server normalises the number again in any case.
+  const formatPhone = digits => {
+    const d = digits.slice(0, 10);
+    if (!d) return '';
+    let out = '+7 (' + d.slice(0, 3);
+    if (d.length > 3) out += ') ' + d.slice(3, 6);
+    if (d.length > 6) out += '-' + d.slice(6, 8);
+    if (d.length > 8) out += '-' + d.slice(8, 10);
+    return out;
+  };
+  document.querySelectorAll('input[data-phone-mask]').forEach(field => {
+    // "+7" is already part of the mask, so typing starts straight from the operator code.
+    const digits = () => field.value.replace(/\D/g, '');
+    field.addEventListener('focus', () => { if (!field.value) field.value = '+7 ('; });
+    field.addEventListener('blur', () => { if (digits().length <= 1) field.value = ''; });
+    field.addEventListener('input', event => {
+      if (event.inputType && event.inputType.startsWith('delete')) return; // let backspace remove separators
+      let d = digits();
+      if (field.value.startsWith('+7')) d = d.slice(1);                    // the 7 of the prefix is not a typed digit
+      if (d.length > 10 && (d[0] === '7' || d[0] === '8')) d = d.slice(1);  // pasted 8 900 … or 7 900 …
+      field.value = d ? formatPhone(d) : '+7 (';
+    });
+    if (field.value) field.value = formatPhone(field.value.startsWith('+7') ? digits().slice(1) : digits());
+  });
+
+  // Password fields get an eye button that shows or hides what was typed.
+  const eye = open => `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>${open ? '' : '<path d="M3 3l18 18"/>'}</svg>`;
+  document.querySelectorAll('input[type="password"]').forEach(field => {
+    const wrap = document.createElement('span');
+    wrap.className = 'password-field';
+    field.replaceWith(wrap);
+    wrap.append(field);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'password-toggle';
+    const update = () => {
+      const shown = field.type === 'text';
+      button.innerHTML = eye(!shown);
+      button.setAttribute('aria-label', shown ? 'Скрыть пароль' : 'Показать пароль');
+      button.setAttribute('aria-pressed', String(shown));
+    };
+    button.addEventListener('click', () => { field.type = field.type === 'password' ? 'text' : 'password'; update(); field.focus(); });
+    update();
+    wrap.append(button);
+  });
+
   // Phones and tablets: the sidebar is a drawer. Without JS the #sidebar link still opens it via :target.
   const menuToggle = document.querySelector('.menu-toggle');
   if (menuToggle) {
