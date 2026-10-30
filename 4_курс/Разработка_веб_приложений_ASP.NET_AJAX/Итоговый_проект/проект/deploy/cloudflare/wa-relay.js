@@ -19,12 +19,32 @@ const ipToInt = ip => ip.split('.').reduce((n, p) => (n << 8) + Number(p), 0) >>
 const isTelegramIp = host => /^\d+\.\d+\.\d+\.\d+$/.test(host) &&
   TELEGRAM_NETS.some(({ net, bits }) => (ipToInt(host) >>> (32 - bits)) === (ipToInt(net) >>> (32 - bits)));
 
+// Diagnostics: can this Worker reach the host by an ordinary HTTPS request, and by a raw TCP socket?
+async function check(host) {
+  const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error(`timeout ${ms} ms`)), ms))]);
+  const result = { host };
+  const t1 = Date.now();
+  try {
+    const r = await withTimeout(fetch(`https://${host}/`, { redirect: 'manual' }), 10000);
+    result.https = `HTTP ${r.status} in ${Date.now() - t1} ms`;
+  } catch (err) { result.https = `failed: ${err.message}`; }
+  const t2 = Date.now();
+  try {
+    const socket = connect({ hostname: host, port: 443 });
+    await withTimeout(socket.opened, 10000);
+    result.tcp = `opened in ${Date.now() - t2} ms`;
+    socket.close();
+  } catch (err) { result.tcp = `failed: ${err.message}`; }
+  return Response.json(result);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname !== '/tunnel') return new Response('Not found', { status: 404 });
+    if (url.pathname !== '/tunnel' && url.pathname !== '/check') return new Response('Not found', { status: 404 });
     if (!env.RELAY_TOKEN || request.headers.get('Authorization') !== `Bearer ${env.RELAY_TOKEN}`)
       return new Response('Forbidden', { status: 403 });
+    if (url.pathname === '/check') return check(url.searchParams.get('host') ?? 'web.whatsapp.com');
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
       return new Response('Expected WebSocket', { status: 426 });
 
