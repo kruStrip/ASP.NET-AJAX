@@ -54,6 +54,11 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
             var colon = target.LastIndexOf(':');
             var (host, port) = colon > 0 ? (target[..colon], target[(colon + 1)..]) : (target, "443");
 
+            if (Chunked)
+            {
+                await RunChunkedAsync(stream, host, int.Parse(port), stoppingToken);
+                return;
+            }
             ClientWebSocket ws;
             try { ws = await OpenAsync(host, int.Parse(port), stoppingToken); }
             catch (Exception ex) when (ex is WebSocketException or HttpRequestException or SocketException)
@@ -74,6 +79,138 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
         catch (Exception ex) when (ex is IOException or WebSocketException or SocketException or OperationCanceledException or FormatException)
         {
             logger.LogDebug(ex, "Relay connection ended");
+        }
+    }
+
+    // ---- Chunked mode (default) ----
+    // The provider freezes any single connection to Cloudflare after ~64 KB, so instead of one long WebSocket the bytes
+    // travel in pieces of ≤ 8 KB, each in its own short HTTPS request on a fresh connection; a Durable Object in the
+    // Worker holds the real TCP connection. Offsets make retries safe: a repeated piece is neither lost nor doubled.
+
+    private const int Piece = 8 * 1024;
+    private static readonly HttpClient Http = new(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.Zero })
+    {
+        Timeout = Timeout.InfiniteTimeSpan
+    };
+
+    /// <summary>Chunked unless Relay:Mode is "websocket".</summary>
+    private bool Chunked => !string.Equals(config["Relay:Mode"], "websocket", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>https://relay.example from wss://relay.example/tunnel.</summary>
+    private string HttpBase
+    {
+        get
+        {
+            var uri = new Uri(RelayUrl!);
+            var scheme = uri.Scheme is "ws" or "http" ? "http" : "https";
+            return $"{scheme}://{uri.Authority}";
+        }
+    }
+
+    private HttpRequestMessage Request(HttpMethod method, string path)
+    {
+        var request = new HttpRequestMessage(method, HttpBase + path);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config["Relay:Token"]);
+        request.Headers.ConnectionClose = true;   // every piece on a fresh connection: none of them grows past the limit
+        return request;
+    }
+
+    private async Task RunChunkedAsync(NetworkStream stream, string host, int port, CancellationToken stoppingToken)
+    {
+        string id;
+        try
+        {
+            using var open = Request(HttpMethod.Post, $"/s/open?host={Uri.EscapeDataString(host)}&port={port}");
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            using var response = await Http.SendAsync(open, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Relay: the Worker refused to open {Host}:{Port}: {Status} {Body}", host, port,
+                    (int)response.StatusCode, await response.Content.ReadAsStringAsync(timeout.Token));
+                await ReplyAsync(stream, "502 Bad Gateway", stoppingToken);
+                return;
+            }
+            using var json = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
+            id = json.RootElement.GetProperty("id").GetString()!;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException)
+        {
+            logger.LogWarning("Relay: cannot open {Host}:{Port} through the Worker: {Reason}", host, port, ex.Message);
+            await ReplyAsync(stream, "502 Bad Gateway", stoppingToken);
+            return;
+        }
+
+        logger.LogInformation("Relay: chunked tunnel {Id} to {Host}:{Port} opened", id[..8], host, port);
+        await ReplyAsync(stream, "200 Connection Established", stoppingToken);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        long sent = 0, received = 0, retries = 0;
+        var why = "the client closed the connection";
+
+        var up = Task.Run(async () =>
+        {
+            var buffer = new byte[Piece];
+            int read;
+            while ((read = await stream.ReadAsync(buffer, cts.Token)) > 0)
+            {
+                for (var attempt = 1; ; attempt++)
+                {
+                    try
+                    {
+                        using var request = Request(HttpMethod.Post, $"/s/{id}/up?at={sent}");
+                        request.Content = new ByteArrayContent(buffer, 0, read);
+                        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                        using var response = await Http.SendAsync(request, timeout.Token);
+                        if (response.IsSuccessStatusCode) break;
+                        if (response.StatusCode == HttpStatusCode.Gone) { why = "the Worker closed the tunnel"; return; }
+                    }
+                    catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !cts.IsCancellationRequested)) { }
+                    Interlocked.Increment(ref retries);
+                    if (attempt >= 8) { why = "a piece could not be sent after 8 attempts"; return; }
+                    await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt), cts.Token);
+                }
+                sent += read;
+            }
+        }, cts.Token);
+
+        var down = Task.Run(async () =>
+        {
+            var failures = 0;
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    using var request = Request(HttpMethod.Get, $"/s/{id}/down?from={received}");
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    using var response = await Http.SendAsync(request, timeout.Token);
+                    if (response.StatusCode == HttpStatusCode.Gone) { why = "the host closed the connection"; return; }
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        var bytes = await response.Content.ReadAsByteArrayAsync(timeout.Token);
+                        await stream.WriteAsync(bytes, cts.Token);
+                        received += bytes.Length;
+                    }
+                    else if (response.StatusCode != HttpStatusCode.NoContent) throw new HttpRequestException("HTTP " + (int)response.StatusCode);
+                    failures = 0;
+                }
+                catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !cts.IsCancellationRequested))
+                {
+                    Interlocked.Increment(ref retries);
+                    if (++failures >= 8) { why = "the Worker stopped answering"; return; }
+                    await Task.Delay(TimeSpan.FromMilliseconds(300 * failures), cts.Token);
+                }
+            }
+        }, cts.Token);
+
+        try { await Task.WhenAny(up, down); }
+        finally
+        {
+            cts.Cancel();
+            try { using var close = Request(HttpMethod.Post, $"/s/{id}/close"); using var _ = await Http.SendAsync(close, CancellationToken.None); } catch { }
+            logger.LogInformation("Relay: chunked tunnel {Id} to {Host}:{Port} closed — {Why}; sent {Sent} B, received {Received} B, retries {Retries}",
+                id[..8], host, port, why, sent, received, Interlocked.Read(ref retries));
         }
     }
 
@@ -123,8 +260,8 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
     }
 
     /// <summary>
-    /// Diagnostics for «Мессенджеры»: (1) 256 KB through the Worker's echo — the site → Cloudflare leg alone;
-    /// (2) the Worker uploads 200 KB to WhatsApp over a raw socket — the Cloudflare → WhatsApp leg alone.
+    /// Diagnostics for «Мессенджеры»: (1) the WhatsApp web page through the whole tunnel; (2) the Worker uploads 200 KB
+    /// to WhatsApp over a raw socket — the Cloudflare → WhatsApp leg alone.
     /// </summary>
     public async Task<string> SelfTestAsync(CancellationToken ct)
     {
@@ -132,34 +269,20 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
         var report = new StringBuilder();
         var baseUrl = RelayUrl!.TrimEnd('/');
         baseUrl = baseUrl[..baseUrl.LastIndexOf('/')];
-        const int total = 256 * 1024;
+        // The whole chain, as WhatsApp uses it: an HTTPS page from web.whatsapp.com through this proxy and the Worker.
         var started = DateTime.UtcNow;
-        long echoed = 0;
         try
         {
-            using var ws = new ClientWebSocket();
-            ws.Options.SetRequestHeader("Authorization", "Bearer " + config["Relay:Token"]);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(20));
-            await ws.ConnectAsync(new Uri(baseUrl + "/echo"), timeout.Token);
-            var receive = Task.Run(async () =>
-            {
-                var buffer = new byte[64 * 1024];
-                while (echoed < total)
-                {
-                    var r = await ws.ReceiveAsync(buffer.AsMemory(), timeout.Token);
-                    if (r.MessageType == WebSocketMessageType.Close) break;
-                    Interlocked.Add(ref echoed, r.Count);
-                }
-            }, timeout.Token);
-            var chunk = new byte[MaxMessage];
-            Random.Shared.NextBytes(chunk);
-            for (var sent = 0; sent < total; sent += chunk.Length)
-                await ws.SendAsync(chunk, WebSocketMessageType.Binary, true, timeout.Token);
-            try { await receive; } catch (OperationCanceledException) { }
-            report.Append($"Сайт → Cloudflare: вернулось {Interlocked.Read(ref echoed) / 1024} из {total / 1024} КБ за {(DateTime.UtcNow - started).TotalSeconds:0.0} с. ");
+            var proxy = new WebProxy($"http://127.0.0.1:{Port}");
+            if (config["Relay:ProxyPassword"] is { Length: > 0 } password) proxy.Credentials = new NetworkCredential("waha", password);
+            using var viaTunnel = new HttpClient(new HttpClientHandler { Proxy = proxy, UseProxy = true }) { Timeout = TimeSpan.FromSeconds(60) };
+            var page = await viaTunnel.GetByteArrayAsync("https://web.whatsapp.com/", ct);
+            report.Append($"Через туннель: страница WhatsApp {page.Length / 1024} КБ за {(DateTime.UtcNow - started).TotalSeconds:0.0} с — туннель работает. ");
         }
-        catch (Exception ex) { report.Append($"Сайт → Cloudflare: ошибка после {Interlocked.Read(ref echoed) / 1024} КБ — {ex.Message}. "); }
+        catch (Exception ex)
+        {
+            report.Append($"Через туннель: ошибка за {(DateTime.UtcNow - started).TotalSeconds:0.0} с — {ex.GetBaseException().Message}. ");
+        }
 
         try
         {

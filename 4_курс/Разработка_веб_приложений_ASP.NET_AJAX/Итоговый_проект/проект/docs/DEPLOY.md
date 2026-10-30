@@ -59,7 +59,12 @@ bash scripts/deploy.sh      # сборка образа локально, заг
 **Сеть сервера не пускает к WhatsApp** (DNS и соединения блокируются), поэтому WhatsApp идёт через Cloudflare Worker
 `deploy/cloudflare/wa-relay.js`: сайт держит CONNECT-прокси на порту 3128 (только во внутренней сети), контейнер `waha`
 ходит через него, а прокси передаёт байты в Worker по WebSocket. TLS остаётся сквозным, Worker видит только шифрованные
-данные и пускает лишь к адресам WhatsApp и Telegram. Переменные: `WA_RELAY_URL` (`wss://wa-relay.<аккаунт>.workers.dev/tunnel`),
+данные и пускает лишь к адресам WhatsApp и Telegram. Провайдер сервера «замораживает» любое одно соединение с Cloudflare примерно после 64 КБ
+(проверено: и `*.workers.dev`, и свой домен), поэтому по умолчанию туннель **порционный**: Durable Object `Tunnel`
+в Worker'е держит TCP-соединение с WhatsApp, а сайт передаёт байты кусками ≤ 8 КБ, каждый отдельным HTTPS-запросом на
+новом соединении, со сдвигами (повтор куска не теряет и не дублирует данные). Worker публикуется из
+`deploy/cloudflare` командой `npx wrangler deploy` (Durable Object из панели не создаётся); адрес — `relay.lovelaceclub.ru`.
+Прежний режим одного WebSocket — `Relay__Mode=websocket`. Переменные: `WA_RELAY_URL` (`wss://wa-relay.<аккаунт>.workers.dev/tunnel`),
 `WA_RELAY_TOKEN` (тот же, что секрет `RELAY_TOKEN` у Worker'а), `TELEGRAM_VIA_RELAY=true` — если и Telegram заблокирован.
 
 После изменения `.env`: `docker compose up -d`. Затем на сайте «Управление → Мессенджеры» — «Показать QR-код» у Telegram

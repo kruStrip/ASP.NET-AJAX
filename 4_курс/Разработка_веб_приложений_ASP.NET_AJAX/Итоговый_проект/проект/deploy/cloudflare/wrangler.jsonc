@@ -1,0 +1,14 @@
+// Deploy from this folder:  npx wrangler login   (once)   then   npx wrangler deploy
+// The secret RELAY_TOKEN set in the dashboard is kept. The custom domain relay.lovelaceclub.ru is kept as well.
+{
+  "name": "wa-relay",
+  "main": "wa-relay.js",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "routes": [{ "pattern": "relay.lovelaceclub.ru", "custom_domain": true }],
+  "durable_objects": {
+    "bindings": [{ "name": "TUNNEL", "class_name": "Tunnel" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Tunnel"] }],
+  "observability": { "enabled": true }
+}

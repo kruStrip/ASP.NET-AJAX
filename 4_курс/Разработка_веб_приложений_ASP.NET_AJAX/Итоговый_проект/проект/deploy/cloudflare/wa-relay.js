@@ -1,4 +1,4 @@
-// Cloudflare Worker "wa-relay": a byte tunnel for the МузЛото server, whose network cannot reach WhatsApp
+// Cloudflare Worker "wa-relay" (deploy with wrangler from this folder: see wrangler.jsonc): a byte tunnel for the МузЛото server, whose network cannot reach WhatsApp
 // (and possibly Telegram). The site opens a WebSocket to /tunnel?host=…&port=…; the Worker connects to that host
 // over TCP and passes bytes both ways. TLS stays end-to-end between the server and WhatsApp/Telegram: the Worker
 // sees only encrypted bytes.
@@ -84,14 +84,145 @@ async function check(host, upload) {
   return Response.json(result);
 }
 
+// ---- Chunked tunnel ----------------------------------------------------------------------------------------------
+// The server's provider freezes any single connection to Cloudflare after ~64 KB, so one long WebSocket cannot carry
+// WhatsApp (its login uploads ~40 KB of keys at once). Instead a Durable Object holds the TCP connection to WhatsApp
+// and the site moves bytes in small pieces, each request on a fresh connection:
+//   POST /s/open?host=&port=        → { id }
+//   POST /s/{id}/up?at=N   (body)   → bytes for the host; N is the byte offset, so a retried piece is not written twice
+//   GET  /s/{id}/down?from=N        → the host's bytes from offset N (≤ 8 KB); waits up to 20 s; 204 = nothing yet,
+//                                     410 = the host closed the connection
+//   POST /s/{id}/close
+const PIECE = 8 * 1024;
+
+async function chunkedTunnel(request, url, env) {
+  if (!env.TUNNEL) return new Response('Durable Object binding TUNNEL is missing (deploy with wrangler)', { status: 500 });
+  const [, , id, op] = url.pathname.split('/');
+  if (id === 'open') {
+    const host = url.searchParams.get('host') ?? '';
+    const port = Number(url.searchParams.get('port') ?? '443');
+    if (!(ALLOWED_HOSTS.test(host) || isTelegramIp(host)) || ![443, 80, 5222].includes(port))
+      return new Response('Host not allowed', { status: 403 });
+    const sessionId = crypto.randomUUID();
+    const stub = env.TUNNEL.get(env.TUNNEL.idFromName(sessionId));
+    const opened = await stub.fetch(`https://do/open?host=${encodeURIComponent(host)}&port=${port}`, { method: 'POST' });
+    return opened.ok ? Response.json({ id: sessionId }) : opened;
+  }
+  if (!/^[0-9a-f-]{36}$/.test(id ?? '') || !['up', 'down', 'close'].includes(op))
+    return new Response('Not found', { status: 404 });
+  const stub = env.TUNNEL.get(env.TUNNEL.idFromName(id));
+  return stub.fetch(`https://do/${op}${url.search}`, { method: request.method, body: request.method === 'POST' ? request.body : undefined });
+}
+
+/** One tunnelled TCP connection; lives as long as the site keeps polling it. */
+export class Tunnel {
+  constructor(state, env) {
+    this.state = state;
+    this.socket = null;
+    this.writer = null;
+    this.upOffset = 0;            // bytes written to the host so far
+    this.downBase = 0;            // offset of the first byte still buffered
+    this.downBuffers = [];        // host bytes not yet acknowledged by the site
+    this.closed = false;
+    this.waiters = [];
+    this.label = '';
+  }
+
+  wake() { for (const resolve of this.waiters.splice(0)) resolve(); }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    const op = url.pathname.slice(1);
+    if (op === 'open') {
+      const host = url.searchParams.get('host'); const port = Number(url.searchParams.get('port'));
+      this.label = `${host}:${port}`;
+      this.socket = connect({ hostname: host, port });
+      this.writer = this.socket.writable.getWriter();
+      this.socket.opened.then(() => console.log(`[do] TCP to ${this.label} opened`)).catch(err => this.finish('connect failed: ' + err));
+      this.pump();
+      return new Response('ok');
+    }
+    if (!this.socket) return new Response('No such tunnel', { status: 410 });
+    if (op === 'up') {
+      const at = Number(url.searchParams.get('at'));
+      const data = new Uint8Array(await request.arrayBuffer());
+      if (at < this.upOffset) return new Response('duplicate');            // a retried piece already written
+      if (at > this.upOffset) return new Response('gap', { status: 409 }); // an earlier piece is still on its way
+      this.upOffset += data.byteLength;
+      try { await this.writer.write(data); } catch (err) { this.finish('write failed: ' + err); return new Response('closed', { status: 410 }); }
+      return new Response('ok');
+    }
+    if (op === 'down') {
+      const from = Number(url.searchParams.get('from'));
+      this.drop(from);
+      if (this.available(from) === 0 && !this.closed)
+        await Promise.race([new Promise(resolve => this.waiters.push(resolve)), new Promise(resolve => setTimeout(resolve, 20000))]);
+      const piece = this.take(from, PIECE);
+      if (piece.byteLength > 0) return new Response(piece, { headers: { 'Content-Type': 'application/octet-stream' } });
+      return new Response(null, { status: this.closed ? 410 : 204 });
+    }
+    if (op === 'close') { this.finish('closed by the site'); return new Response('ok'); }
+    return new Response('Not found', { status: 404 });
+  }
+
+  async pump() {
+    const reader = this.socket.readable.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        this.downBuffers.push(value);
+        this.wake();
+      }
+      this.finish('host closed the connection');
+    } catch (err) { this.finish('read failed: ' + err); }
+  }
+
+  finish(why) {
+    if (this.closed) return;
+    this.closed = true;
+    console.log(`[do] ${this.label} ${why}; up ${this.upOffset} B, down ${this.downBase + this.bufferedBytes()} B`);
+    try { this.socket?.close(); } catch {}
+    this.wake();
+  }
+
+  bufferedBytes() { return this.downBuffers.reduce((n, b) => n + b.byteLength, 0); }
+  available(from) { return Math.max(0, this.downBase + this.bufferedBytes() - from); }
+
+  /** Forgets bytes the site has confirmed by asking for a later offset. */
+  drop(from) {
+    while (this.downBuffers.length && this.downBase + this.downBuffers[0].byteLength <= from) {
+      this.downBase += this.downBuffers[0].byteLength;
+      this.downBuffers.shift();
+    }
+  }
+
+  take(from, max) {
+    const out = new Uint8Array(Math.min(max, this.available(from)));
+    let filled = 0, position = this.downBase;
+    for (const buffer of this.downBuffers) {
+      const start = Math.max(0, from - position);
+      if (start < buffer.byteLength && filled < out.length) {
+        const part = buffer.subarray(start, start + (out.length - filled));
+        out.set(part, filled);
+        filled += part.byteLength;
+      }
+      position += buffer.byteLength;
+    }
+    return out;
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!['/tunnel', '/check', '/echo'].includes(url.pathname)) return new Response('Not found', { status: 404 });
+    const chunked = url.pathname.startsWith('/s/');
+    if (!chunked && !['/tunnel', '/check', '/echo'].includes(url.pathname)) return new Response('Not found', { status: 404 });
     if (!env.RELAY_TOKEN || request.headers.get('Authorization') !== `Bearer ${env.RELAY_TOKEN}`)
       return new Response('Forbidden', { status: 403 });
     if (url.pathname === '/check') return check(url.searchParams.get('host') ?? 'web.whatsapp.com', Number(url.searchParams.get('upload') ?? '0'));
     if (url.pathname === '/echo') return echo();
+    if (chunked) return chunkedTunnel(request, url, env);
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
       return new Response('Expected WebSocket', { status: 426 });
 
