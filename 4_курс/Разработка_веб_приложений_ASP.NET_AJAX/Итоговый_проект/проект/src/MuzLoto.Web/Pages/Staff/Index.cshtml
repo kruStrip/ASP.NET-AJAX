@@ -3,8 +3,10 @@
 @{ ViewData["Title"] = "Сотрудники"; }
 <div class="page-heading"><div><div class="eyebrow">Доступ к системе</div><h1>Сотрудники</h1>
 <p class="muted">Только администратор создаёт аккаунты и меняет роли. Менеджер видит только назначенные игры.</p></div></div>
+@* The list comes first; the form opens with «Добавить сотрудника» (and stays open after a validation error). *@
+<details class="add-staff" open="@(ViewData.ModelState.ErrorCount > 0)">
+<summary class="button">Добавить сотрудника</summary>
 <section class="panel form-panel">
-<h2>Добавить сотрудника</h2>
 <form method="post" asp-page-handler="Create" autocomplete="off">
 <div asp-validation-summary="All" class="error-text"></div>
 <label asp-for="Input.FullName">Имя сотрудника</label><input asp-for="Input.FullName" maxlength="150" autocomplete="name" />
@@ -15,6 +17,7 @@
 <p class="muted">Пароль не отправляется письмом. Передай его сотруднику отдельно; после первого входа сотрудник может сменить пароль.</p>
 <button type="submit" class="button">Создать аккаунт</button>
 </form></section>
+</details>
 <section class="panel"><h2>Аккаунты и роли</h2>
 <div class="card-list">
 @foreach (var employee in Model.Employees)

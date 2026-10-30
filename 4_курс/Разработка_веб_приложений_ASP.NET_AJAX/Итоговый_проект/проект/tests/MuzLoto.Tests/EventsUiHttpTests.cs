@@ -113,6 +113,20 @@ public sealed class EventsUiHttpTests(AppFactory app)
     }
 
     [Fact]
+    public async Task Unpublish_FromTheGamesList_EndsTheGameAndHidesItFromTheForm()
+    {
+        var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
+        var id = IdFrom(await AppFactory.PostFormAsync(admin, "/events/create", GameFields("Снять " + Guid.NewGuid().ToString("N")[..6])));
+        Assert.Contains(id.ToString(), await app.Browser().GetStringAsync("/"));          // published: listed in the form
+        Assert.Contains("Снять с публикации", await admin.GetStringAsync("/events"));
+
+        var response = await AppFactory.PostFormAsync(admin, "/events?handler=Unpublish", new() { ["id"] = id.ToString() });
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.NotNull((await DbAsync(db => db.GameSessions.AsNoTracking().SingleAsync(x => x.Id == id))).CompletedAt);
+        Assert.DoesNotContain(id.ToString(), await app.Browser().GetStringAsync("/"));     // no longer bookable
+    }
+
+    [Fact]
     public async Task Create_TakesThePicture_NewDateCopiesIt()
     {
         var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));

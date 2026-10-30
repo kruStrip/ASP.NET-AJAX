@@ -132,3 +132,10 @@ p a,label a,li a,.muted a,.footer a{text-decoration:underline;text-underline-off
 .password-field input{width:100%;padding-right:48px}
 .password-toggle{position:absolute;top:50%;right:6px;transform:translateY(-50%);display:grid;place-items:center;width:38px;height:38px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
 .password-toggle:hover{color:var(--text);background:var(--soft)}
+/* «Добавить сотрудника»: a button that unfolds the form above the list. */
+.add-staff{margin-bottom:18px}
+.add-staff>summary{list-style:none;width:max-content}
+.add-staff>summary::-webkit-details-marker{display:none}
+.add-staff[open]>summary{margin-bottom:14px}
+/* Empty validation summaries rendered no stray bullet. */
+.validation-summary-valid{display:none}

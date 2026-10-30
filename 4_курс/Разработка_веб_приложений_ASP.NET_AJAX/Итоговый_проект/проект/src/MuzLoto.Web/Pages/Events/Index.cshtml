@@ -1,7 +1,17 @@
 @page "/events"
 @model MuzLoto.Web.Pages.Events.IndexModel
-@{ ViewData["Title"] = "Мероприятия"; }
-<div class="page-heading"><div><div class="eyebrow">Расписание</div><h1>Все игры</h1></div>
+@{ ViewData["Title"] = "Текущие игры"; }
+@{
+    // "Снять с публикации" = the game is over: it leaves the booking form, unpaid requests are deleted, paid sales stay.
+    async Task Unpublish(Guid id)
+    {
+        <form method="post" asp-page-handler="Unpublish" asp-route-q="@Model.Q" asp-route-status="@Model.Status" data-confirm="Снять игру с публикации? Она пропадёт из формы записи, неоплаченные заявки будут удалены без возможности восстановления. Оплаченные продажи сохранятся.">
+            <input type="hidden" name="id" value="@id" />
+            <button class="button danger" type="submit">Снять с публикации</button>
+        </form>
+    }
+}
+<div class="page-heading"><div><div class="eyebrow">Расписание</div><h1>Текущие игры</h1></div>
 @if (User.IsInRole("Admin")) { <a class="button" asp-page="/Events/Create">Добавить игру</a> }
 </div>
 <form method="get" class="filters" role="search">
@@ -29,7 +39,12 @@
             @if (!s.ArchivedAt.HasValue && !s.CompletedAt.HasValue) { <a class="button secondary" asp-page="/Events/Edit" asp-route-id="@s.Id">Изменить</a> }
             <a class="button secondary" asp-page="/Events/Create" asp-route-gameId="@s.GameId">Добавить дату</a>
             <a class="button secondary" asp-page="/Staff/Assignments" asp-route-sessionId="@s.Id">Сотрудники игры</a>
+            @if (!s.ArchivedAt.HasValue && !s.CompletedAt.HasValue) { await Unpublish(s.Id); }
         </div>
+    }
+    else if (!s.ArchivedAt.HasValue && !s.CompletedAt.HasValue)
+    {
+        <div class="button-stack">@{ await Unpublish(s.Id); }</div>
     }
     </article>
 }

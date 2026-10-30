@@ -26,25 +26,23 @@
 @* Phones and tablets: a top bar with a menu button; the sidebar slides in as a drawer (works without JS via #sidebar). *@
 <header class="mobile-bar">
     <a href="#sidebar" class="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Открыть меню"><span></span><span></span><span></span></a>
-    <a class="brand" asp-page="/Home"><img src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото — на главную" width="40" height="40" /></a>
+    <a class="brand" asp-page="@(isStaff ? "/Index" : "/Home")"><img src="~/img/logo.jpg" asp-append-version="true" alt="@(isStaff ? "МузЛото — главная панель" : "МузЛото — на главную")" width="40" height="40" /></a>
     @if (isStaff) { <span class="online" data-online-count hidden></span> }
 </header>
 <aside class="sidebar" id="sidebar">
     <a href="#" class="menu-close" aria-label="Закрыть меню">×</a>
-    <a class="brand" asp-page="/Home"><img src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото — на главную" width="48" height="48" /></a>
+    <a class="brand" asp-page="@(isStaff ? "/Index" : "/Home")"><img src="~/img/logo.jpg" asp-append-version="true" alt="@(isStaff ? "МузЛото — главная панель" : "МузЛото — на главную")" width="48" height="48" /></a>
     <nav class="side-nav" aria-label="Основная навигация">
         @if (isStaff)
         {
             <span class="side-group">Заявки</span>
-            <a asp-page="/Index" class="@Active("/Index")" aria-current="@Current("/Index")">Главная</a>
-            <a asp-page="/Bookings/Pending" class="@Active("/Bookings/Pending")" aria-current="@Current("/Bookings/Pending")">Подтверждение</a>
-            <a asp-page="/Bookings/Confirmed" class="@Active("/Bookings/Confirmed", "/Bookings/History")" aria-current="@Current("/Bookings/Confirmed", "/Bookings/History")">Покупки</a>
-            <a asp-page="/Bookings/Cancelled" class="@Active("/Bookings/Cancelled")" aria-current="@Current("/Bookings/Cancelled")">Отменённые</a>
+            <a asp-page="/Bookings/Pending" class="@Active("/Bookings/Pending")" aria-current="@Current("/Bookings/Pending")">Подтвердить игру</a>
+            <a asp-page="/Bookings/Confirmed" class="@Active("/Bookings/Confirmed", "/Bookings/History")" aria-current="@Current("/Bookings/Confirmed", "/Bookings/History")">Покупки билетов</a>
+            <a asp-page="/Bookings/Cancelled" class="@Active("/Bookings/Cancelled")" aria-current="@Current("/Bookings/Cancelled")">Отменённые игры</a>
             @if (isAdmin) { <a asp-page="/Refunds/Index" class="@Active("/Refunds/Index")" aria-current="@Current("/Refunds/Index")">Возвраты</a> }
 
             <span class="side-group">Мероприятия</span>
-            <a asp-page="/Events/Index" class="@Active("/Events/Index", "/Events/Details", "/Events/Edit", "/Events/Create")" aria-current="@Current("/Events/Index", "/Events/Details", "/Events/Edit", "/Events/Create")">Игры</a>
-            <a asp-page="/Events/Complete" class="@Active("/Events/Complete")" aria-current="@Current("/Events/Complete")">Завершить</a>
+            <a asp-page="/Events/Index" class="@Active("/Events/Index", "/Events/Details", "/Events/Edit", "/Events/Create")" aria-current="@Current("/Events/Index", "/Events/Details", "/Events/Edit", "/Events/Create")">Текущие игры</a>
 
             @if (isAdmin)
             {
@@ -55,9 +53,9 @@
             }
         }
         <span class="side-group">Аккаунт</span>
-        <a asp-page="/Home" class="@Active("/Home")" aria-current="@Current("/Home")">Запись на игру</a>
+        <a asp-page="/Home" class="@Active("/Home")" aria-current="@Current("/Home")">Форма записи</a>
         <a asp-page="/Bookings/Mine" class="@Active("/Bookings/Mine", "/Bookings/Edit")" aria-current="@Current("/Bookings/Mine", "/Bookings/Edit")">Мои заявки</a>
-        <a asp-page="/Account/ChangePassword" class="@Active("/Account/ChangePassword")" aria-current="@Current("/Account/ChangePassword")">Пароль</a>
+        <a asp-page="/Account/ChangePassword" class="@Active("/Account/ChangePassword")" aria-current="@Current("/Account/ChangePassword")">Сменить пароль</a>
     </nav>
     <div class="side-user">
         @if (isStaff) { <span class="online" data-online-count hidden></span> }

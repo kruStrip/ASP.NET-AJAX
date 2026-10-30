@@ -10,7 +10,7 @@ using MuzLoto.Web.Services;
 namespace MuzLoto.Web.Pages.Events;
 
 [Authorize(Roles = "Admin,Manager")]
-public class IndexModel(AppDbContext db) : PageModel
+public class IndexModel(AppDbContext db, StaffAccess access, BookingWorkflow workflow) : PageModel
 {
     public sealed record SessionRow(GameSession Session, int Reserved, int Remaining, string? CoverUrl);
     public static readonly (string Value, string Label)[] Filters =
@@ -61,5 +61,18 @@ public class IndexModel(AppDbContext db) : PageModel
             var cover = x.Images.OrderBy(i => i.SortOrder).FirstOrDefault();
             return new SessionRow(x, sold, x.Capacity - sold, cover is null ? null : CoverImages.Url(cover));
         }).ToList();
+    }
+
+    /// <summary>«Снять с публикации»: the game is finished and leaves the booking form (same as the former «Игра прошла»).</summary>
+    public async Task<IActionResult> OnPostUnpublishAsync(Guid id, CancellationToken ct)
+    {
+        if (!await access.CanManageAsync(User, id, ct)) return Forbid();
+        try
+        {
+            await workflow.CompleteSessionAsync(id, ct);
+            TempData["Notice"] = "Игра снята с публикации. Неоплаченные заявки удалены, оплаченные продажи сохранены.";
+        }
+        catch (BusinessException ex) { TempData["Error"] = ex.Message; }
+        return RedirectToPage(new { Q, Status });
     }
 }
