@@ -148,7 +148,11 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AllowAnonymousToPage("/Account/Login");
     options.Conventions.AllowAnonymousToPage("/Account/Register");
     options.Conventions.AllowAnonymousToPage("/Account/Denied");
-}).AddMvcOptions(o => o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
+}).AddMvcOptions(o =>
+{
+    o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+    o.Filters.Add<AntiforgeryFailureFilter>();
+});
 // JWT API controllers opt out with [IgnoreAntiforgeryToken]: browsers never attach a bearer token by themselves.
 builder.Services.AddControllers(o => o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
 

@@ -12,9 +12,19 @@ namespace MuzLoto.Web.Pages;
 /// The customer booking form (replaces FormDesigner): date → game card → contacts → «Пожалуйста, перепроверьте»
 /// → «К оплате». The booking is created as Pending and takes no seats until staff confirm the payment.
 /// </summary>
+/// <remarks>
+/// The anti-forgery token is checked by hand here: a token goes stale when the customer signs in or out in another
+/// tab or comes back with «Назад» after booking (booking signs the customer in). Instead of a bare 400 the form
+/// comes back with what was typed and a fresh token. CSRF protection stays: nothing is saved without a valid token.
+/// </remarks>
+[IgnoreAntiforgeryToken]
 public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, PaymentLinks paymentLinks, IConfiguration config,
-    ClientAccounts accounts, SignInManager<AppUser> signIn) : PageModel
+    ClientAccounts accounts, SignInManager<AppUser> signIn, Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery) : PageModel
 {
+    private const string StaleForm = "Страница устарела — например, вы вошли или вышли из аккаунта. Проверьте данные и нажмите ещё раз.";
+
+    private async Task<bool> TokenIsValidAsync() => await antiforgery.IsRequestValidAsync(HttpContext);
+
     public enum Steps { Form, Review }
 
     public List<GameOffer> Offers { get; private set; } = new();
@@ -53,6 +63,7 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
 
     public async Task<IActionResult> OnPostReviewAsync(CancellationToken ct)
     {
+        if (!await TokenIsValidAsync()) return await StaleAsync(ct);
         if (!await ValidateAsync(ct)) return Page();
         Step = Steps.Review;
         return Page();
@@ -60,6 +71,7 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
 
     public async Task<IActionResult> OnPostEditAsync(CancellationToken ct)
     {
+        // «Назад» only shows the form again with the typed values: nothing is saved, no token needed.
         ModelState.Clear();
         await LoadAsync(Input.SessionId, ct);
         return Page();
@@ -67,6 +79,7 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
 
     public async Task<IActionResult> OnPostSubmitAsync(CancellationToken ct)
     {
+        if (!await TokenIsValidAsync()) return await StaleAsync(ct);
         if (!await ValidateAsync(ct)) return Page();
         if (!string.IsNullOrEmpty(Input.Website)) return RedirectToPage(); // bot: pretend nothing happened
         try
@@ -105,6 +118,16 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
             await LoadAsync(Input.SessionId, ct);
             return Page();
         }
+    }
+
+    /// <summary>Stale token: back to the form with the typed values and a fresh token; nothing was saved.</summary>
+    private async Task<IActionResult> StaleAsync(CancellationToken ct)
+    {
+        ModelState.Clear();
+        await LoadAsync(Input.SessionId, ct);
+        if (Input.SubmissionKey == Guid.Empty) Input.SubmissionKey = Guid.NewGuid();
+        ModelState.AddModelError(string.Empty, StaleForm);
+        return Page();
     }
 
     private async Task LoadAsync(Guid? sessionId, CancellationToken ct)

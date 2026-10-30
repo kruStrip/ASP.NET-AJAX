@@ -178,15 +178,22 @@ public sealed class IdentityHttpTests(AppFactory app)
     }
 
     [Fact]
-    public async Task Register_WithoutAntiforgeryToken_Returns400()
+    public async Task Register_WithoutAntiforgeryToken_IsRejected_WithAFriendlyRedirect()
     {
-        var response = await app.Browser().PostAsync("/account/register", new FormUrlEncodedContent(
+        var email = $"csrf-{Guid.NewGuid():N}@example.invalid";
+        var client = app.Browser();
+        var response = await client.PostAsync("/account/register", new FormUrlEncodedContent(
             new Dictionary<string, string>
             {
-                ["Input.FullName"] = "CSRF", ["Input.Email"] = $"csrf-{Guid.NewGuid():N}@example.invalid",
+                ["Input.FullName"] = "CSRF", ["Input.Email"] = email,
                 ["Input.Password"] = "abc123", ["Input.ConfirmPassword"] = "abc123", ["Input.AcceptPrivacy"] = "true"
             }));
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // Not executed: back to the page with "Страница устарела…" instead of a bare 400.
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/register", response.Headers.Location?.OriginalString);
+        Assert.Contains("Страница устарела", WebUtility.HtmlDecode(await client.GetStringAsync("/account/register")));
+        using var scope = app.Services.CreateScope();
+        Assert.Null(await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByEmailAsync(email));
     }
 
     [Fact]

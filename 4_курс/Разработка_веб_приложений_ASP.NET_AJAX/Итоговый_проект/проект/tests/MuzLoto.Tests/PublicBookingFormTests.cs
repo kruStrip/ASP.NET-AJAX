@@ -142,7 +142,7 @@ public sealed class PublicBookingFormTests(AppFactory app)
         Assert.StartsWith("/oplata/", payUrl);                                       // no sign-in from a typed phone
         Assert.Equal(HttpStatusCode.Redirect, (await stranger.GetAsync("/bookings/mine")).StatusCode);
         var bookings = await BookingsAsync(s.Id);
-        Assert.Equal(2, bookings.Count);
+        Assert.True(bookings.Count == 2, "both bookings are kept");
         Assert.Single(bookings.Select(x => x.OwnerUserId).Distinct());
 
         var pay = await stranger.GetAsync(payUrl);
@@ -180,7 +180,7 @@ public sealed class PublicBookingFormTests(AppFactory app)
         var pdf = "%PDF-1.4 receipt"u8.ToArray();
         Assert.Equal(HttpStatusCode.Redirect, (await UploadReceiptAsync(client, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, pdf, "check.pdf")).StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await UploadReceiptAsync(client, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, Png)).StatusCode);
-        Assert.Equal(1, Directory.GetFiles(Path.Combine(AppFactory.ImagesPath, "receipts"), $"{booking.Id:N}-*").Length);  // replaced, not piled up
+        Assert.Single(Directory.GetFiles(Path.Combine(AppFactory.ImagesPath, "receipts"), $"{booking.Id:N}-*"));  // replaced, not piled up
 
         var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
         var pending = WebUtility.HtmlDecode(await admin.GetStringAsync("/bookings/pending?q=" + Uri.EscapeDataString(booking.TeamName)));
@@ -215,6 +215,25 @@ public sealed class PublicBookingFormTests(AppFactory app)
         Assert.NotEmpty(password);
         var login = await AppFactory.PostFormAsync(app.Browser(), "/account/login", new() { ["Input.Login"] = phone, ["Input.Password"] = password });
         Assert.Equal("/bookings/mine", login.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task StaleToken_ReturnsTheFormWithTypedValues_AndSavesNothing()
+    {
+        var s = await SessionAsync();
+        var client = app.Browser();
+        var fields = Fields(s);
+        fields["__RequestVerificationToken"] = "stale-token-from-an-old-page";
+        foreach (var handler in new[] { "Review", "Submit" })
+        {
+            var response = await client.PostAsync($"/?handler={handler}", new FormUrlEncodedContent(fields));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);              // not a bare 400
+            var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+            Assert.Contains("Страница устарела", html);
+            Assert.Contains(fields["Input.Team"], html);                       // what was typed is kept
+            Assert.Matches("name=\"__RequestVerificationToken\"", html);      // with a fresh token
+        }
+        Assert.Empty(await BookingsAsync(s.Id));
     }
 
     [Fact]
