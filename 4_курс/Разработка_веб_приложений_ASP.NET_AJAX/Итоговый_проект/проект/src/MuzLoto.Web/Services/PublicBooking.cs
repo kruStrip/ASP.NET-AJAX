@@ -32,6 +32,12 @@ public sealed class PublicSchedule(AppDbContext db, IConfiguration config)
             .GroupBy(x => x.GameSessionId).Select(g => new { g.Key, Quantity = g.Sum(x => x.Quantity) })
             .ToDictionaryAsync(x => x.Key, x => x.Quantity, ct);
         var cap = config.GetValue<int?>("Booking:MaxTicketsPerBooking");
+        // The picture belongs to the game: a date without its own picture shows the game's latest one.
+        var gameIds = sessions.Select(x => x.GameId).Distinct().ToList();
+        var gamePictures = (await db.GameImages.AsNoTracking().Include(x => x.GameSession)
+                .Where(x => gameIds.Contains(x.GameSession.GameId)).ToListAsync(ct))
+            .GroupBy(x => x.GameSession.GameId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.GameSession.StartsAt).ThenBy(x => x.SortOrder).First());
 
         var local = sessions.Select(s => (Session: s, Start: ScheduleTime.ToLocal(s.StartsAt, s.TimeZoneId))).ToList();
         // The list shows dates only ("05.11.2026"); the time is added when two games share a day.
@@ -41,7 +47,7 @@ public sealed class PublicSchedule(AppDbContext db, IConfiguration config)
             var s = x.Session; var g = s.Game;
             var remaining = Math.Max(0, s.Capacity - sold.GetValueOrDefault(s.Id));
             var label = x.Start.ToString(sharedDays.Contains(x.Start.Date) ? "dd.MM.yyyy HH:mm" : "dd.MM.yyyy", CultureInfo.InvariantCulture);
-            var cover = s.Images.OrderBy(i => i.SortOrder).FirstOrDefault();
+            var cover = s.Images.OrderBy(i => i.SortOrder).FirstOrDefault() ?? gamePictures.GetValueOrDefault(s.GameId);
             return new GameOffer(s.Id, g.Title, label, x.Start,
                 new[] { g.Description1, g.Description2, g.Description3, g.Description4, g.Description5 }
                     .Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d!.Trim()).ToList(),

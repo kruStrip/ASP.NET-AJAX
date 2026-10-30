@@ -130,6 +130,9 @@ public sealed class EventsUiHttpTests(AppFactory app)
         var copy = await DbAsync(db => db.GameImages.AsNoTracking().SingleAsync(x => x.GameSessionId == IdFrom(second)));
         Assert.NotEqual(first.StorageKey, copy.StorageKey);
         Assert.Equal(Png, await (await app.Browser().GetAsync($"/images/{copy.Id}")).Content.ReadAsByteArrayAsync());
+        // A date that has no picture of its own still shows the game's picture in the booking form.
+        await DbAsync(async db => await db.GameImages.Where(x => x.Id == copy.Id).ExecuteDeleteAsync());
+        Assert.Contains($"/images/{first.Id}", await app.Browser().GetStringAsync($"/?game={IdFrom(second)}"));
 
         // A bad file does not lose the game: it is created, the admin is told why the picture was skipped.
         var bad = await CreateWithCoverAsync(admin, "/events/create", GameFields("Без афиши " + Guid.NewGuid().ToString("N")[..6]), "not an image"u8.ToArray());
