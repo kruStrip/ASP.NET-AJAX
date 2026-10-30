@@ -35,6 +35,16 @@ async function check(host) {
     result.tcp = `opened in ${Date.now() - t2} ms`;
     socket.close();
   } catch (err) { result.tcp = `failed: ${err.message}`; }
+  // A full TLS request over a raw socket, the way the tunnel carries WhatsApp's own TLS.
+  const t3 = Date.now();
+  try {
+    const socket = connect({ hostname: host, port: 443 }, { secureTransport: 'on' });
+    const writer = socket.writable.getWriter();
+    await writer.write(new TextEncoder().encode(`GET / HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`));
+    const { value } = await withTimeout(socket.readable.getReader().read(), 10000);
+    result.tlsSocket = `answered in ${Date.now() - t3} ms: ${new TextDecoder().decode(value).split('\r\n')[0]}`;
+    socket.close();
+  } catch (err) { result.tlsSocket = `failed: ${err.message}`; }
   return Response.json(result);
 }
 
@@ -68,6 +78,7 @@ export default {
     server.addEventListener('message', async event => {
       try {
         const data = typeof event.data === 'string' ? new TextEncoder().encode(event.data) : new Uint8Array(event.data);
+        if (up === 0) console.log(`[${id}] first ${data.byteLength} B from the site`);
         up += data.byteLength;
         await writer.write(data);
       } catch (err) { done('write to upstream failed: ' + err); try { server.close(1011, 'upstream write failed'); } catch {} }
@@ -81,6 +92,7 @@ export default {
         for (;;) {
           const { value, done: finished } = await reader.read();
           if (finished) break;
+          if (down === 0) console.log(`[${id}] first ${value.byteLength} B from ${host}`);
           down += value.byteLength;
           server.send(value);
         }
