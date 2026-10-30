@@ -37,7 +37,7 @@
         {
             <span class="side-group">Заявки</span>
             <a asp-page="/Bookings/Pending" class="@Active("/Bookings/Pending")" aria-current="@Current("/Bookings/Pending")">Подтвердить игру</a>
-            <a asp-page="/Bookings/Confirmed" class="@Active("/Bookings/Confirmed", "/Bookings/History")" aria-current="@Current("/Bookings/Confirmed", "/Bookings/History")">Покупки билетов</a>
+            <a asp-page="/Bookings/Confirmed" class="@Active("/Bookings/Confirmed", "/Bookings/History")" aria-current="@Current("/Bookings/Confirmed", "/Bookings/History")">Подтверждённые игры</a>
             <a asp-page="/Bookings/Cancelled" class="@Active("/Bookings/Cancelled")" aria-current="@Current("/Bookings/Cancelled")">Отменённые игры</a>
             @if (isAdmin) { <a asp-page="/Refunds/Index" class="@Active("/Refunds/Index")" aria-current="@Current("/Refunds/Index")">Возвраты</a> }
 
