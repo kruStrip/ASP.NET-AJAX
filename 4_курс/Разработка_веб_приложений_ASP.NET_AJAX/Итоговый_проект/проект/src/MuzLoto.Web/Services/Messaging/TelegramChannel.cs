@@ -167,7 +167,35 @@ public sealed class TelegramChannel : IMessengerChannel, IAsyncDisposable
     {
         if (client is not null) return client;
         Directory.CreateDirectory(DataPath);
-        return client = new WTelegram.Client(Config);
+        client = new WTelegram.Client(Config);
+        // Telegram is blocked from the server's network too: go through the same Cloudflare relay as WhatsApp.
+        if (config.GetValue("Telegram:UseRelay", false)) client.TcpHandler = ConnectThroughRelayAsync;
+        return client;
+    }
+
+    /// <summary>A TCP connection to a Telegram data centre via the local relay proxy (RelayTunnel, CONNECT).</summary>
+    private async Task<System.Net.Sockets.TcpClient> ConnectThroughRelayAsync(string address, int port)
+    {
+        var tcp = new System.Net.Sockets.TcpClient();
+        try
+        {
+            await tcp.ConnectAsync(System.Net.IPAddress.Loopback, RelayTunnel.Port);
+            var stream = tcp.GetStream();
+            var auth = config["Relay:ProxyPassword"] is { Length: > 0 } password
+                ? "Proxy-Authorization: Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("waha:" + password)) + "\r\n" : "";
+            await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes($"CONNECT {address}:{port} HTTP/1.1\r\nHost: {address}:{port}\r\n{auth}\r\n"));
+            var reply = new List<byte>();
+            var one = new byte[1];
+            while (await stream.ReadAsync(one) == 1)
+            {
+                reply.Add(one[0]);
+                if (reply.Count >= 4 && reply[^4] == '\r' && reply[^3] == '\n' && reply[^2] == '\r' && reply[^1] == '\n') break;
+            }
+            if (!System.Text.Encoding.ASCII.GetString(reply.ToArray()).Contains(" 200 "))
+                throw new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused);
+            return tcp;
+        }
+        catch { tcp.Dispose(); throw; }
     }
 
     /// <summary>Answers the library's questions. Only QR sign-in is used: phone and SMS-code questions are refused.</summary>

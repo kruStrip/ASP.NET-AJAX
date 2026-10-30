@@ -56,6 +56,12 @@ bash scripts/deploy.sh      # сборка образа локально, заг
 | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | приложение Telegram, выдаются на https://my.telegram.org → API development tools |
 | `WAHA_API_KEY` | ключ шлюза WhatsApp (контейнер `waha`, только во внутренней сети) |
 
+**Сеть сервера не пускает к WhatsApp** (DNS и соединения блокируются), поэтому WhatsApp идёт через Cloudflare Worker
+`deploy/cloudflare/wa-relay.js`: сайт держит CONNECT-прокси на порту 3128 (только во внутренней сети), контейнер `waha`
+ходит через него, а прокси передаёт байты в Worker по WebSocket. TLS остаётся сквозным, Worker видит только шифрованные
+данные и пускает лишь к адресам WhatsApp и Telegram. Переменные: `WA_RELAY_URL` (`wss://wa-relay.<аккаунт>.workers.dev/tunnel`),
+`WA_RELAY_TOKEN` (тот же, что секрет `RELAY_TOKEN` у Worker'а), `TELEGRAM_VIA_RELAY=true` — если и Telegram заблокирован.
+
 После изменения `.env`: `docker compose up -d`. Затем на сайте «Управление → Мессенджеры» — «Показать QR-код» у Telegram
 и у WhatsApp. Telegram сканируют в приложении: Настройки → Устройства → Подключить устройство; WhatsApp: Связанные
 устройства → Привязка устройства. Аккаунт, с которого отсканировали код, и становится отправителем.

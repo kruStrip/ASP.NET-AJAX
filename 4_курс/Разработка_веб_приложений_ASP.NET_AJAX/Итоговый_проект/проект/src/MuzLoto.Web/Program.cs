@@ -178,6 +178,8 @@ builder.Services.AddHttpClient<MuzLoto.Web.Services.Messaging.WhatsAppChannel>(h
     http.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddTransient<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.WhatsAppChannel>());
+builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.RelayTunnel>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.RelayTunnel>());
 builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.MessageDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.MessageDispatcher>());
 builder.Services.AddSingleton<PaymentLinks>();

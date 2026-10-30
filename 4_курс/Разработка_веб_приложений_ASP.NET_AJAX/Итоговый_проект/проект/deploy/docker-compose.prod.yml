@@ -42,6 +42,12 @@ services:
       Telegram__ApiHash: ${TELEGRAM_API_HASH:-}
       Waha__Url: http://waha:3000
       Waha__ApiKey: ${WAHA_API_KEY:-}
+      # WhatsApp (and, if TELEGRAM_VIA_RELAY=true, Telegram) are blocked from this server's network: the app runs a
+      # small CONNECT proxy on :3128 that tunnels through the Cloudflare Worker deploy/cloudflare/wa-relay.js.
+      Relay__Url: ${WA_RELAY_URL:-}
+      Relay__Token: ${WA_RELAY_TOKEN:-}
+      Relay__ProxyPassword: ${WAHA_API_KEY:-}
+      Telegram__UseRelay: ${TELEGRAM_VIA_RELAY:-false}
     volumes:
       - appdata:/data
     mem_limit: 320m
@@ -61,6 +67,10 @@ services:
       WAHA_DASHBOARD_ENABLED: "false"
       WHATSAPP_SWAGGER_ENABLED: "false"
       WAHA_PRINT_QR: "false"
+      # All WhatsApp traffic goes through the app's relay proxy (see Relay__* above).
+      WHATSAPP_PROXY_SERVER: app:3128
+      WHATSAPP_PROXY_SERVER_USERNAME: waha
+      WHATSAPP_PROXY_SERVER_PASSWORD: ${WAHA_API_KEY:-}
     volumes:
       - wahadata:/app/.sessions
     mem_limit: 256m
