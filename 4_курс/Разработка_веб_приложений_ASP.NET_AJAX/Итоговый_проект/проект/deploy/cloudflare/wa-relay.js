@@ -37,25 +37,35 @@ export default {
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
 
+    // Diagnostics in Workers Logs (Observability): did the TCP connection open, how many bytes went each way, why it ended.
+    const id = crypto.randomUUID().slice(0, 8);
+    let up = 0, down = 0;
+    const done = why => console.log(`[${id}] ${host}:${port} closed — ${why}; sent ${up} B, received ${down} B`);
+    socket.opened.then(() => console.log(`[${id}] TCP to ${host}:${port} opened`))
+      .catch(err => { done('TCP connect failed: ' + err); try { server.close(1011, 'connect failed'); } catch {} });
+
     const writer = socket.writable.getWriter();
     server.addEventListener('message', async event => {
       try {
         const data = typeof event.data === 'string' ? new TextEncoder().encode(event.data) : new Uint8Array(event.data);
+        up += data.byteLength;
         await writer.write(data);
-      } catch { try { server.close(1011, 'upstream write failed'); } catch {} }
+      } catch (err) { done('write to upstream failed: ' + err); try { server.close(1011, 'upstream write failed'); } catch {} }
     });
-    server.addEventListener('close', () => { try { socket.close(); } catch {} });
+    server.addEventListener('close', event => { done(`client closed (${event.code})`); try { socket.close(); } catch {} });
     server.addEventListener('error', () => { try { socket.close(); } catch {} });
 
     (async () => {
       const reader = socket.readable.getReader();
       try {
         for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
+          const { value, done: finished } = await reader.read();
+          if (finished) break;
+          down += value.byteLength;
           server.send(value);
         }
-      } catch {}
+        done('upstream ended');
+      } catch (err) { done('read from upstream failed: ' + err); }
       try { server.close(1000, 'upstream closed'); } catch {}
     })();
 

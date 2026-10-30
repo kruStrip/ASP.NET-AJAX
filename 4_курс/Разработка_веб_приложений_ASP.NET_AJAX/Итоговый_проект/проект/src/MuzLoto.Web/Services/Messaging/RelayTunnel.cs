@@ -65,7 +65,9 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
             using var _ws = ws;
             logger.LogInformation("Relay: tunnel to {Host}:{Port} opened", host, port);
             await ReplyAsync(stream, "200 Connection Established", stoppingToken);
-            await PipeAsync(stream, ws, stoppingToken);
+            var (sent, received) = await PipeAsync(stream, ws, stoppingToken);
+            logger.LogInformation("Relay: tunnel to {Host}:{Port} closed — sent {Sent} B, received {Received} B, Worker said: {Close}",
+                host, port, sent, received, ws.CloseStatusDescription ?? ws.CloseStatus?.ToString() ?? "nothing");
         }
         catch (Exception ex) when (ex is IOException or WebSocketException or SocketException or OperationCanceledException or FormatException)
         {
@@ -85,16 +87,20 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
         return ws;
     }
 
-    /// <summary>Copies bytes both ways until either side closes.</summary>
-    public static async Task PipeAsync(Stream stream, WebSocket ws, CancellationToken ct)
+    /// <summary>Copies bytes both ways until either side closes; returns the byte counts (sent up, received down).</summary>
+    public static async Task<(long Sent, long Received)> PipeAsync(Stream stream, WebSocket ws, CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        long sent = 0, received = 0;
         var up = Task.Run(async () =>
         {
             var buffer = new byte[16 * 1024];
             int read;
             while ((read = await stream.ReadAsync(buffer, cts.Token)) > 0)
+            {
                 await ws.SendAsync(buffer.AsMemory(0, read), WebSocketMessageType.Binary, true, cts.Token);
+                Interlocked.Add(ref sent, read);
+            }
         }, cts.Token);
         var down = Task.Run(async () =>
         {
@@ -104,11 +110,13 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
                 var result = await ws.ReceiveAsync(buffer.AsMemory(), cts.Token);
                 if (result.MessageType == WebSocketMessageType.Close) break;
                 await stream.WriteAsync(buffer.AsMemory(0, result.Count), cts.Token);
+                Interlocked.Add(ref received, result.Count);
             }
         }, cts.Token);
         await Task.WhenAny(up, down);
         cts.Cancel();
         try { await ws.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None); } catch { }
+        return (Interlocked.Read(ref sent), Interlocked.Read(ref received));
     }
 
     private bool Authorized(string[] lines)
