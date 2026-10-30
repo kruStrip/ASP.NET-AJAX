@@ -10,11 +10,8 @@ public class SessionForm
 {
     [StringLength(200, MinimumLength = 3, ErrorMessage = "Название: от 3 до 200 символов.")]
     public string? Title { get; set; }
-    [StringLength(1000)] public string? Description1 { get; set; }
-    [StringLength(1000)] public string? Description2 { get; set; }
-    [StringLength(1000)] public string? Description3 { get; set; }
-    [StringLength(1000)] public string? Description4 { get; set; }
-    [StringLength(1000)] public string? Description5 { get; set; }
+    /// <summary>One text field; each line is a paragraph (the game keeps up to five, the fifth takes the rest).</summary>
+    [StringLength(5000, ErrorMessage = "Описание: не длиннее 5000 символов.")] public string? Description { get; set; }
 
     /// <summary>Local date and time of the game as typed: 14.10.2026 19:00 (the time zone is not edited in the UI).</summary>
     [Required(ErrorMessage = "Укажите дату и время.")]
@@ -26,8 +23,11 @@ public class SessionForm
     [Range(0, 1000000, ErrorMessage = "Цена: от 0 до 1 000 000.")] public decimal TicketPrice { get; set; }
     [Range(1, 100000, ErrorMessage = "Мест: от 1 до 100 000.")] public int Capacity { get; set; } = 40;
 
-    public string[] Descriptions => new[] { Description1, Description2, Description3, Description4, Description5 }
-        .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).ToArray();
+    public string[] Descriptions => (Description ?? "").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    private static string? Join(Game g) =>
+        string.Join("\n", new[] { g.Description1, g.Description2, g.Description3, g.Description4, g.Description5 }
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim())) is { Length: > 0 } text ? text : null;
 
     /// <summary>Server-side checks that Data Annotations cannot express; returns the start time in UTC.</summary>
     /// <param name="timeZoneId">Zone the date is typed in: the default for new dates, the session's own when editing.</param>
@@ -54,9 +54,10 @@ public class SessionForm
     public void ApplyToGame(Game game)
     {
         game.Title = Title!.Trim();
-        var d = new[] { Description1, Description2, Description3, Description4, Description5 }
-            .Select(x => string.IsNullOrWhiteSpace(x) ? null : x.Trim()).ToArray();
-        (game.Description1, game.Description2, game.Description3, game.Description4, game.Description5) = (d[0], d[1], d[2], d[3], d[4]);
+        var lines = Descriptions;
+        string? At(int i) => i < lines.Length ? lines[i] : null;
+        var rest = lines.Length > 5 ? string.Join("\n", lines[4..]) : At(4); // more than five lines: the last column keeps them
+        (game.Description1, game.Description2, game.Description3, game.Description4, game.Description5) = (At(0), At(1), At(2), At(3), rest);
     }
 
     public void ApplyToSession(GameSession s, DateTimeOffset startsAtUtc)
@@ -72,8 +73,7 @@ public class SessionForm
 
     public static T From<T>(GameSession s) where T : SessionForm, new() => new()
     {
-        Title = s.Game.Title, Description1 = s.Game.Description1, Description2 = s.Game.Description2,
-        Description3 = s.Game.Description3, Description4 = s.Game.Description4, Description5 = s.Game.Description5,
+        Title = s.Game.Title, Description = Join(s.Game),
         LocalStart = ScheduleTime.Format(s.StartsAt, s.TimeZoneId), Venue = s.Venue,
         MapUrl = s.MapUrl, DurationMinutes = s.DurationMinutes, AgeLimit = s.AgeLimit,
         TicketPrice = s.TicketPrice, Capacity = s.Capacity

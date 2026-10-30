@@ -5,11 +5,7 @@
     <h2>Игра</h2>
     <p class="muted">Название и описание общие для всех дат этой игры.</p>
     <label asp-for="Title">Название</label><input asp-for="Title" /><span asp-validation-for="Title" class="error-text"></span>
-    <label asp-for="Description1">Описание, абзац 1</label><textarea asp-for="Description1" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description1" class="error-text"></span>
-    <label asp-for="Description2">Описание, абзац 2</label><textarea asp-for="Description2" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description2" class="error-text"></span>
-    <label asp-for="Description3">Описание, абзац 3</label><textarea asp-for="Description3" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description3" class="error-text"></span>
-    <label asp-for="Description4">Описание, абзац 4</label><textarea asp-for="Description4" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description4" class="error-text"></span>
-    <label asp-for="Description5">Описание, абзац 5</label><textarea asp-for="Description5" rows="2" maxlength="1000"></textarea><span asp-validation-for="Description5" class="error-text"></span>
+    <label asp-for="Description">Описание игры — каждый абзац с новой строки</label><textarea asp-for="Description" rows="6" maxlength="5000"></textarea><span asp-validation-for="Description" class="error-text"></span>
 }
 <h2>Дата проведения</h2>
 <label asp-for="LocalStart">Дата и время (Владивосток)</label><input asp-for="LocalStart" placeholder="14.10.2026 19:00" inputmode="numeric" autocomplete="off" maxlength="16" data-datetime-mask /><span asp-validation-for="LocalStart" class="error-text"></span>

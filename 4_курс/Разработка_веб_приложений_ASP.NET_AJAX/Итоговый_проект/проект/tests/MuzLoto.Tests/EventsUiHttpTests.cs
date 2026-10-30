@@ -18,8 +18,7 @@ public sealed class EventsUiHttpTests(AppFactory app)
     private static Dictionary<string, string> GameFields(string title) => new()
     {
         ["Input.Title"] = title,
-        ["Input.Description1"] = "Первый абзац",
-        ["Input.Description2"] = "<script>alert('XSS')</script>",
+        ["Input.Description"] = "Первый абзац\n<script>alert('XSS')</script>",
         ["Input.LocalStart"] = DateTime.Today.AddDays(9).ToString("dd.MM.yyyy 19:00"),
         ["Input.Venue"] = "Тестовый бар",
         ["Input.MapUrl"] = "https://2gis.ru/vladivostok",
@@ -66,6 +65,11 @@ public sealed class EventsUiHttpTests(AppFactory app)
         Assert.DoesNotContain("Asia/Vladivostok", html);
         Assert.DoesNotContain("<script>alert", html);                        // Razor encodes user text
         Assert.Contains("&lt;script&gt;", html);
+        var game = await DbAsync(db => db.Games.AsNoTracking().SingleAsync(x => x.Title == title));
+        Assert.Equal(("Первый абзац", "<script>alert('XSS')</script>", (string?)null),
+            (game.Description1, game.Description2, game.Description3));    // one field, one paragraph per line
+        var edit = WebUtility.HtmlDecode(await admin.GetStringAsync($"/events/{id}/edit"));
+        Assert.Contains("Первый абзац\n<script>alert('XSS')</script></textarea>", edit.Replace("\r\n", "\n"));
         Assert.Contains("href=\"https://2gis.ru/vladivostok\"", html);
         Assert.Contains("16+", html);
 

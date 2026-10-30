@@ -126,3 +126,4 @@ p a,label a,li a,.muted a,.footer a{text-decoration:underline;text-underline-off
 .online,.seats,.req{color:var(--text)}
 .check input{accent-color:var(--text)}
 .alert.success{background:rgba(0,0,0,.28);color:var(--text);box-shadow:none}
+.game-text p,.pre-line{white-space:pre-line}

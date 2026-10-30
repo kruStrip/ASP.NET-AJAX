@@ -16,7 +16,7 @@
     @if (Model.CoverUrl is not null) { <img class="cover" src="@Model.CoverUrl" alt="Обложка игры" /> }
     @foreach (var paragraph in new[] { s.Game.Description1, s.Game.Description2, s.Game.Description3, s.Game.Description4, s.Game.Description5 })
     {
-        if (!string.IsNullOrWhiteSpace(paragraph)) { <p>@paragraph</p> }
+        if (!string.IsNullOrWhiteSpace(paragraph)) { <p class="pre-line">@paragraph</p> }
     }
     <dl class="facts">
         <dt>Место</dt><dd>@s.Venue @if (LinkRules.IsHttpUrl(s.MapUrl)) { <a href="@s.MapUrl" target="_blank" rel="noopener noreferrer">2ГИС</a> }</dd>
