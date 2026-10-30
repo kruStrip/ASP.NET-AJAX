@@ -52,7 +52,18 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
             var colon = target.LastIndexOf(':');
             var (host, port) = colon > 0 ? (target[..colon], target[(colon + 1)..]) : (target, "443");
 
-            using var ws = await OpenAsync(host, int.Parse(port), stoppingToken);
+            ClientWebSocket ws;
+            try { ws = await OpenAsync(host, int.Parse(port), stoppingToken); }
+            catch (Exception ex) when (ex is WebSocketException or HttpRequestException or SocketException)
+            {
+                // The usual causes: the Worker is unreachable, the token does not match (403) or the host is not allowed.
+                logger.LogWarning("Relay: cannot open the tunnel to {Host}:{Port} through the Cloudflare Worker: {Reason}",
+                    host, port, ex.InnerException?.Message is { } inner ? $"{ex.Message} ({inner})" : ex.Message);
+                await ReplyAsync(stream, "502 Bad Gateway", stoppingToken);
+                return;
+            }
+            using var _ws = ws;
+            logger.LogInformation("Relay: tunnel to {Host}:{Port} opened", host, port);
             await ReplyAsync(stream, "200 Connection Established", stoppingToken);
             await PipeAsync(stream, ws, stoppingToken);
         }
