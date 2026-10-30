@@ -7,43 +7,47 @@
 Сообщения отправляются по очереди с паузой, чтобы мессенджеры не сочли это рассылкой.</p></div></div>
 
 <section class="panel">
-    <h2>Telegram — личный аккаунт</h2>
+    <h2>Telegram</h2>
     @if (!tg.IsConfigured)
     {
-        <p>Не настроен. На сервере в <code>.env</code> нужны <code>TELEGRAM_API_ID</code>, <code>TELEGRAM_API_HASH</code> (выдаются на my.telegram.org) и <code>TELEGRAM_PHONE</code> — номер аккаунта.</p>
+        <p>Не настроен. На сервере в <code>.env</code> нужны <code>TELEGRAM_API_ID</code> и <code>TELEGRAM_API_HASH</code> — ключи приложения с my.telegram.org.</p>
+    }
+    else if (tg.WaitingForScan)
+    {
+        <p>Откройте Telegram на телефоне, с аккаунта которого будут уходить сообщения: <b>Настройки → Устройства → Подключить устройство</b>, и наведите камеру на код.
+        Страница обновится сама, когда аккаунт подключится.</p>
+        @if (tg.QrUrl is not null) { <img class="pay-qr" src="@Url.Page(null, "TelegramQr")&t=@DateTime.UtcNow.Ticks" alt="QR-код для подключения Telegram" data-refresh-seconds="10" /> }
+        else { <p class="muted" data-refresh-seconds="3">Готовим QR-код…</p> }
     }
     else if (Model.TelegramReady)
     {
-        <p>Подключён: <b>@tg.AccountName</b> (@tg.Phone).</p>
+        <p>Подключён: <b>@tg.AccountName</b>. Сообщения уходят с этого аккаунта.</p>
         <form method="post" asp-page-handler="TelegramLogout" data-confirm="Отключить Telegram? Новые сообщения будут ждать повторного подключения.">
             <button type="submit" class="button secondary">Отключить</button></form>
     }
-    else if (tg.NextLoginStep is "verification_code" or "password")
-    {
-        <form method="post" asp-page-handler="TelegramContinue" class="slot-form">
-            <label for="tg-value">@(tg.NextLoginStep == "password" ? "Пароль двухэтапной проверки" : "Код из Telegram (пришёл в чат «Telegram» на аккаунте " + tg.Phone + ")")</label>
-            <input id="tg-value" name="value" type="@(tg.NextLoginStep == "password" ? "password" : "text")" autocomplete="one-time-code" required />
-            <div><button type="submit" class="button">Подтвердить</button></div>
-        </form>
-    }
     else
     {
-        <p>Аккаунт @tg.Phone не подключён.</p>
-        <form method="post" asp-page-handler="TelegramCode"><button type="submit" class="button">Получить код и подключить</button></form>
+        @if (tg.LoginError is not null) { <p class="alert error">@tg.LoginError</p> }
+        <form method="post" asp-page-handler="TelegramQr" class="slot-form">
+            <label for="tg-password">Пароль двухэтапной проверки Telegram — только если он включён на этом аккаунте</label>
+            <input id="tg-password" name="password" type="password" autocomplete="off" />
+            <div><button type="submit" class="button">Показать QR-код</button></div>
+        </form>
     }
 </section>
 
 <section class="panel">
     <h2>WhatsApp — отдельный номер</h2>
     <p>Состояние: <b>@IndexModel.WhatsAppText(Model.WhatsApp.Status)</b>@if (Model.WhatsApp.Account is not null) { <span> — @Model.WhatsApp.Account</span> }</p>
+    @if (Model.WhatsApp.Status == "STARTING") { <p class="muted" data-refresh-seconds="3">Готовим QR-код…</p> }
     @if (Model.WhatsApp.Status == "SCAN_QR_CODE")
     {
         <p>Откройте WhatsApp на телефоне с этим номером → «Связанные устройства» → «Привязка устройства» и отсканируйте код. Страница обновится, когда номер подключится.</p>
-        <img class="pay-qr" src="@Url.Page(null, "Qr")" alt="QR-код для подключения WhatsApp" data-refresh-seconds="20" />
+        <img class="pay-qr" src="@Url.Page(null, "WhatsAppQr")&t=@DateTime.UtcNow.Ticks" alt="QR-код для подключения WhatsApp" data-refresh-seconds="20" />
     }
     @if (Model.WhatsApp.Status is "NONE" or "STOPPED" or "FAILED")
     {
-        <form method="post" asp-page-handler="WhatsAppStart"><button type="submit" class="button">Подключить номер</button></form>
+        <form method="post" asp-page-handler="WhatsAppStart"><button type="submit" class="button">Показать QR-код</button></form>
     }
     @if (Model.WhatsApp.Status == "WORKING")
     {

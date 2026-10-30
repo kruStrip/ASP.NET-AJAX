@@ -40,7 +40,6 @@ services:
       Messaging__DataPath: /data/messengers
       Telegram__ApiId: ${TELEGRAM_API_ID:-}
       Telegram__ApiHash: ${TELEGRAM_API_HASH:-}
-      Telegram__Phone: ${TELEGRAM_PHONE:-}
       Waha__Url: http://waha:3000
       Waha__ApiKey: ${WAHA_API_KEY:-}
     volumes:

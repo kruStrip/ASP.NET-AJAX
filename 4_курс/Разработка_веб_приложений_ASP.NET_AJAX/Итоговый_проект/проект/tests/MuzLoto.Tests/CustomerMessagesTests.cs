@@ -134,7 +134,7 @@ public sealed class CustomerMessagesTests(AppFactory app)
         Assert.Equal(System.Net.HttpStatusCode.Redirect, (await manager.GetAsync("/messengers")).StatusCode);
         var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
         var html = System.Net.WebUtility.HtmlDecode(await admin.GetStringAsync("/messengers"));
-        Assert.Contains("Telegram — личный аккаунт", html);
+        Assert.Contains("<h2>Telegram</h2>", html);
         Assert.Contains("TELEGRAM_API_ID", html);                 // not configured in tests: the page says what to add
         Assert.Contains("не настроен на сервере", html);          // WhatsApp gateway
     }

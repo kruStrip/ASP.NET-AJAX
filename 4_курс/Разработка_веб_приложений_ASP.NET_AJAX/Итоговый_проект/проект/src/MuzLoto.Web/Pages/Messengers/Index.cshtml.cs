@@ -27,22 +27,19 @@ public class IndexModel(AppDbContext db, TelegramChannel telegram, WhatsAppChann
             .OrderByDescending(x => x.CreatedAt).Take(60).ToListAsync(ct);
     }
 
-    public Task<IActionResult> OnPostTelegramCodeAsync(CancellationToken ct) => Run(async () =>
+    public Task<IActionResult> OnPostTelegramQrAsync(string? password, CancellationToken ct) => Run(async () =>
     {
-        var next = await telegram.LoginAsync(null, ct);
-        return next is null ? "Telegram подключён." : "Код отправлен в Telegram на этот аккаунт. Введите его ниже.";
+        await telegram.StartQrLoginAsync(password, ct);
+        await Task.Delay(1500, ct);   // the first code arrives within a second
+        return "Отсканируйте QR-код в Telegram: Настройки → Устройства → Подключить устройство. Код действует 5 минут.";
     });
 
-    public Task<IActionResult> OnPostTelegramContinueAsync(string? value, CancellationToken ct) => Run(async () =>
+    public IActionResult OnGetTelegramQr()
     {
-        var next = await telegram.LoginAsync(value, ct);
-        return next switch
-        {
-            null => "Telegram подключён. Сообщения будут уходить с этого аккаунта.",
-            "password" => "Введите пароль двухэтапной проверки Telegram.",
-            _ => "Telegram просит ещё один шаг: " + next
-        };
-    });
+        if (telegram.QrPng() is not { } png) return NotFound();
+        Response.Headers.CacheControl = "no-store";
+        return File(png, "image/png");
+    }
 
     public Task<IActionResult> OnPostTelegramLogoutAsync(CancellationToken ct) => Run(async () =>
     {
@@ -63,7 +60,7 @@ public class IndexModel(AppDbContext db, TelegramChannel telegram, WhatsAppChann
     });
 
     /// <summary>The QR code to scan, served through the site: the gateway itself is not reachable from outside.</summary>
-    public async Task<IActionResult> OnGetQrAsync(CancellationToken ct)
+    public async Task<IActionResult> OnGetWhatsAppQrAsync(CancellationToken ct)
     {
         var png = await whatsApp.QrPngAsync(ct);
         if (png is null) return NotFound();

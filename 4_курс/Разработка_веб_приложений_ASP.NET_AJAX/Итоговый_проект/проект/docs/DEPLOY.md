@@ -54,11 +54,11 @@ bash scripts/deploy.sh      # сборка образа локально, заг
 | Переменная в `/home/BocA/muzloto/.env` | Что это |
 |---|---|
 | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | приложение Telegram, выдаются на https://my.telegram.org → API development tools |
-| `TELEGRAM_PHONE` | номер личного аккаунта, с которого пишем |
 | `WAHA_API_KEY` | ключ шлюза WhatsApp (контейнер `waha`, только во внутренней сети) |
 
-После изменения `.env`: `docker compose up -d`. Затем на сайте «Управление → Мессенджеры»: «Получить код и подключить»
-для Telegram (код придёт в Telegram), «Подключить номер» для WhatsApp и скан QR-кода телефоном с отдельным номером.
+После изменения `.env`: `docker compose up -d`. Затем на сайте «Управление → Мессенджеры» — «Показать QR-код» у Telegram
+и у WhatsApp. Telegram сканируют в приложении: Настройки → Устройства → Подключить устройство; WhatsApp: Связанные
+устройства → Привязка устройства. Аккаунт, с которого отсканировали код, и становится отправителем.
 Сессия Telegram хранится в томе `appdata` (`/data/messengers`), WhatsApp — в томе `wahadata`.
 
 ## Откат и диагностика

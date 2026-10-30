@@ -1,20 +1,28 @@
 using MuzLoto.Web.Domain;
+using QRCoder;
 using TL;
 
 namespace MuzLoto.Web.Services.Messaging;
 
 /// <summary>
-/// Sends from the company's personal Telegram account (MTProto via WTelegramClient). The admin signs in once on
-/// «Мессенджеры» with the code Telegram sends to the account; the session file lives in Messaging:DataPath on the
-/// server volume (never in the repository). Credentials: Telegram:ApiId / Telegram:ApiHash / Telegram:Phone in .env.
+/// Sends from a Telegram account linked by QR code (MTProto via WTelegramClient), like linking Telegram Desktop:
+/// on «Мессенджеры» the admin shows a QR code, the person whose account will send scans it in Telegram
+/// (Настройки → Устройства → Подключить устройство). The session file lives in Messaging:DataPath on the server
+/// volume; the site's Telegram application keys are Telegram:ApiId / Telegram:ApiHash in .env.
 /// </summary>
 public sealed class TelegramChannel : IMessengerChannel, IAsyncDisposable
 {
+    private static readonly TimeSpan QrLifetime = TimeSpan.FromMinutes(5);
+    private static readonly HashSet<string> NotForQrLogin =
+        ["phone_number", "verification_code", "first_name", "last_name", "email", "email_verification_code"];
+
     private readonly IConfiguration config;
     private readonly ILogger<TelegramChannel> logger;
     private readonly SemaphoreSlim gate = new(1, 1);
     private WTelegram.Client? client;
     private bool resumeTried;
+    private CancellationTokenSource? qrLogin;
+    private string? twoFactorPassword;
 
     public TelegramChannel(IConfiguration config, ILogger<TelegramChannel> logger, IWebHostEnvironment env)
     {
@@ -29,12 +37,16 @@ public sealed class TelegramChannel : IMessengerChannel, IAsyncDisposable
     private string SessionPath => Path.Combine(DataPath, "telegram.session");
     private int ApiId => int.TryParse(config["Telegram:ApiId"], out var id) ? id : 0;
     private string? ApiHash => config["Telegram:ApiHash"];
-    public string? Phone => ContactRules.NormalizePhone(config["Telegram:Phone"]);
-    public bool IsConfigured => ApiId > 0 && !string.IsNullOrWhiteSpace(ApiHash) && Phone is not null;
+    public bool IsConfigured => ApiId > 0 && !string.IsNullOrWhiteSpace(ApiHash);
 
-    /// <summary>What the login form asks next: "verification_code", "password", or null when signed in.</summary>
-    public string? NextLoginStep { get; private set; }
-    public string? AccountName => client?.User is { } u ? (u.username is { Length: > 0 } name ? "@" + name : u.first_name) : null;
+    /// <summary>The tg://login link to show as a QR code while waiting for the scan; null otherwise.</summary>
+    public string? QrUrl { get; private set; }
+    public bool WaitingForScan => qrLogin is { IsCancellationRequested: false };
+    /// <summary>Why the last QR sign-in did not finish, in words for the admin.</summary>
+    public string? LoginError { get; private set; }
+    public string? AccountName => client?.User is { } u
+        ? string.Join(" ", new[] { u.first_name, u.last_name }.Where(x => !string.IsNullOrWhiteSpace(x))) + (u.username is { Length: > 0 } n ? $" (@{n})" : "")
+        : null;
 
     public async Task<bool> IsReadyAsync(CancellationToken ct)
     {
@@ -42,50 +54,72 @@ public sealed class TelegramChannel : IMessengerChannel, IAsyncDisposable
         await gate.WaitAsync(ct);
         try
         {
-            // After a restart the saved session signs in by itself; without a session nothing is sent to Telegram.
-            if (client?.User is null && !resumeTried && File.Exists(SessionPath))
+            // After a restart the saved session signs in by itself.
+            if (client?.User is null && !resumeTried && !WaitingForScan && File.Exists(SessionPath))
             {
                 resumeTried = true;
-                try { NextLoginStep = await Client().Login(Phone!); }
-                catch (Exception ex) { logger.LogWarning(ex, "Telegram session could not be resumed"); }
+                try { await Client().LoginUserIfNeeded(); }
+                catch (Exception ex) { logger.LogWarning(ex, "Telegram session could not be resumed; link the account again"); }
             }
-            return client?.User is not null;
+            return client?.User is not null && !WaitingForScan;
         }
         finally { gate.Release(); }
     }
 
-    /// <summary>Starts or continues the sign-in: the phone first, then the code, then the 2FA password if set.</summary>
-    public async Task<string?> LoginAsync(string? value, CancellationToken ct)
+    /// <summary>Starts waiting for a QR scan (for 5 minutes). The 2FA password, if the account has one, is needed up front.</summary>
+    public async Task StartQrLoginAsync(string? password, CancellationToken ct)
     {
-        if (!IsConfigured) throw new BusinessException("Telegram не настроен: на сервере нет Telegram__ApiId, Telegram__ApiHash и Telegram__Phone.");
+        if (!IsConfigured) throw new BusinessException("Telegram не настроен: на сервере нет TELEGRAM_API_ID и TELEGRAM_API_HASH.");
         await gate.WaitAsync(ct);
         try
         {
-            NextLoginStep = await Client().Login(NextLoginStep is null ? Phone! : value?.Trim() ?? "");
-            return NextLoginStep;
-        }
-        catch (RpcException ex)
-        {
-            throw new BusinessException(ex.Message switch
+            qrLogin?.Cancel();
+            if (client is not null) await client.DisposeAsync();
+            client = null;
+            if (File.Exists(SessionPath)) File.Delete(SessionPath);
+            twoFactorPassword = string.IsNullOrWhiteSpace(password) ? null : password;
+            LoginError = null;
+            QrUrl = null;
+            var cts = qrLogin = new CancellationTokenSource(QrLifetime);
+            var telegram = Client();
+            _ = Task.Run(async () =>
             {
-                "PHONE_CODE_INVALID" => "Неверный код из Telegram.",
-                "PHONE_CODE_EXPIRED" => "Код устарел. Нажмите «Получить код» ещё раз.",
-                "PASSWORD_HASH_INVALID" => "Неверный пароль двухэтапной проверки.",
-                _ => "Telegram отклонил вход: " + ex.Message
-            });
+                try
+                {
+                    var user = await telegram.LoginWithQRCode(url => QrUrl = url, logoutFirst: false, ct: cts.Token);
+                    logger.LogInformation("Telegram linked by QR code as user {UserId}", user.id);
+                }
+                catch (OperationCanceledException) { LoginError = "QR-код устарел: нажмите «Показать QR-код» ещё раз."; }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Telegram QR sign-in failed");
+                    LoginError = ex.Message.Contains("PASSWORD") || ex is WrongPasswordNeeded
+                        ? "На аккаунте включена двухэтапная проверка: введите её пароль и покажите QR-код заново."
+                        : "Telegram не завершил вход: " + ex.Message;
+                }
+                finally
+                {
+                    QrUrl = null;
+                    twoFactorPassword = null;
+                    cts.Cancel();
+                }
+            }, CancellationToken.None);
         }
         finally { gate.Release(); }
     }
+
+    public byte[]? QrPng() => QrUrl is { } url ? new PngByteQRCode(QRCodeGenerator.GenerateQrCode(url, QRCodeGenerator.ECCLevel.M)).GetGraphic(8) : null;
 
     public async Task LogoutAsync(CancellationToken ct)
     {
         await gate.WaitAsync(ct);
         try
         {
+            qrLogin?.Cancel();
             if (client?.User is not null) { try { await client.Auth_LogOut(); } catch (Exception ex) { logger.LogWarning(ex, "Telegram logout"); } }
             if (client is not null) await client.DisposeAsync();
             client = null;
-            NextLoginStep = null;
+            QrUrl = null;
             if (File.Exists(SessionPath)) File.Delete(SessionPath);
         }
         finally { gate.Release(); }
@@ -96,7 +130,7 @@ public sealed class TelegramChannel : IMessengerChannel, IAsyncDisposable
         await gate.WaitAsync(ct);
         try
         {
-            if (client?.User is null) return SendOutcome.Failed("Telegram не подключён.");
+            if (client?.User is null || WaitingForScan) return SendOutcome.Failed("Telegram не подключён.");
             InputPeer? peer = null;
             // The nickname from the form first; without it (or if it does not exist) — the phone number.
             if (booking.Telegram is { Length: > 1 } nick)
@@ -133,11 +167,26 @@ public sealed class TelegramChannel : IMessengerChannel, IAsyncDisposable
     {
         if (client is not null) return client;
         Directory.CreateDirectory(DataPath);
-        return client = new WTelegram.Client(ApiId, ApiHash!, SessionPath);
+        return client = new WTelegram.Client(Config);
     }
+
+    /// <summary>Answers the library's questions. Only QR sign-in is used: phone and SMS-code questions are refused.</summary>
+    private string? Config(string what) => what switch
+    {
+        "api_id" => ApiId.ToString(),
+        "api_hash" => ApiHash,
+        "session_pathname" => SessionPath,
+        "password" => twoFactorPassword ?? throw new WrongPasswordNeeded(),
+        "device_model" => "МузЛото (сайт)",
+        _ when NotForQrLogin.Contains(what) => throw new InvalidOperationException("Telegram: вход только по QR-коду на странице «Мессенджеры»."),
+        _ => null
+    };
+
+    private sealed class WrongPasswordNeeded() : Exception("PASSWORD_NEEDED");
 
     public async ValueTask DisposeAsync()
     {
+        qrLogin?.Cancel();
         if (client is not null) await client.DisposeAsync();
     }
 }
