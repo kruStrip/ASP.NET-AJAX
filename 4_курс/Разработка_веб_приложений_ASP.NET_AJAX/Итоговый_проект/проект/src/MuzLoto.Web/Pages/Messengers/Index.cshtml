@@ -49,6 +49,11 @@
     {
         <form method="post" asp-page-handler="WhatsAppStart"><button type="submit" class="button">Показать QR-код</button></form>
     }
+    else if (Model.WhatsApp.Status is "STARTING" or "SCAN_QR_CODE")
+    {
+        @* A start that hangs (or a code nobody scanned) can always be begun again. *@
+        <form method="post" asp-page-handler="WhatsAppStart"><button type="submit" class="button secondary">Перезапустить</button></form>
+    }
     @if (Model.WhatsApp.Status == "WORKING")
     {
         <form method="post" asp-page-handler="WhatsAppLogout" data-confirm="Отключить WhatsApp? Новые сообщения будут ждать повторного подключения.">
