@@ -239,6 +239,33 @@
     if (field.value) field.value = formatPhone(field.value.startsWith('+7') ? digits().slice(1) : digits());
   });
 
+  // File fields: the browser writes «Browse… / No file selected» in the language of the system, so the native control
+  // is hidden and a Russian button with the chosen file name is shown instead. The input itself still sends the file.
+  document.querySelectorAll('input[type="file"]').forEach(input => {
+    const box = document.createElement('span');
+    box.className = 'file-field';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'small-button';
+    button.textContent = input.multiple ? 'Выбрать файлы' : 'Выбрать файл';
+    const name = document.createElement('span');
+    name.className = 'file-name';
+    const update = () => {
+      const files = Array.from(input.files || []);
+      name.textContent = files.length === 0 ? 'Файл не выбран' : files.length === 1 ? files[0].name : `Выбрано файлов: ${files.length}`;
+      box.classList.toggle('has-file', files.length > 0);
+      // The browser's own «Please select a file» would also be in the system language.
+      input.setCustomValidity(input.required && files.length === 0 ? 'Выберите файл.' : '');
+    };
+    input.replaceWith(box);
+    box.append(input, button, name);
+    input.classList.add('file-native');
+    button.addEventListener('click', () => input.click());
+    input.addEventListener('change', update);
+    input.form?.addEventListener('reset', () => setTimeout(update));
+    update();
+  });
+
   // Password fields get an eye button that shows or hides what was typed.
   const eye = open => `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>${open ? '' : '<path d="M3 3l18 18"/>'}</svg>`;
   document.querySelectorAll('input[type="password"]').forEach(field => {

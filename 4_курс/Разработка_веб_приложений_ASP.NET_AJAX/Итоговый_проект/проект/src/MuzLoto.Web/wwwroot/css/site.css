@@ -162,3 +162,8 @@ select option:checked{background:#7c0103 linear-gradient(#7c0103,#7c0103);color:
 .receipt-thumb{display:block;max-width:220px;max-height:220px;border-radius:10px;background:#fff;object-fit:contain}
 .new-account{margin-bottom:18px}
 .new-account code{font-size:20px;letter-spacing:.06em;padding:2px 8px;border-radius:6px;background:var(--field)}
+/* Russian file picker (site.js): the native input stays in the form but is visually hidden. */
+.file-field{position:relative;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px;border-radius:10px;background:var(--field)}
+.file-field .file-native{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.file-field .file-name{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.file-field.has-file .file-name{color:var(--text)}
