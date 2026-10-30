@@ -69,8 +69,8 @@ export default {
 
     // Diagnostics in Workers Logs (Observability): did the TCP connection open, how many bytes went each way, why it ended.
     const id = crypto.randomUUID().slice(0, 8);
-    let up = 0, down = 0;
-    const done = why => console.log(`[${id}] ${host}:${port} closed — ${why}; sent ${up} B, received ${down} B`);
+    let up = 0, down = 0, messages = 0, largest = 0;
+    const done = why => console.log(`[${id}] ${host}:${port} closed — ${why}; sent ${up} B in ${messages} messages (largest ${largest} B), received ${down} B`);
     socket.opened.then(() => console.log(`[${id}] TCP to ${host}:${port} opened`))
       .catch(err => { done('TCP connect failed: ' + err); try { server.close(1011, 'connect failed'); } catch {} });
 
@@ -88,6 +88,8 @@ export default {
     const send = bytes => {
       if (up === 0) console.log(`[${id}] first ${bytes.byteLength} B from the site`);
       up += bytes.byteLength;
+      messages++;
+      largest = Math.max(largest, bytes.byteLength);
       writer.write(bytes).catch(fail);
     };
     let blobs = Promise.resolve();   // keeps order only while Blobs are being read

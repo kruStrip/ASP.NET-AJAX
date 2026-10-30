@@ -16,6 +16,8 @@ namespace MuzLoto.Web.Services.Messaging;
 public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logger) : BackgroundService
 {
     public const int Port = 3128;
+    /// <summary>Largest WebSocket message sent to the relay.</summary>
+    public const int MaxMessage = 4 * 1024;
     private string? RelayUrl => config["Relay:Url"];
     public bool IsConfigured => !string.IsNullOrWhiteSpace(RelayUrl) && !string.IsNullOrWhiteSpace(config["Relay:Token"]);
 
@@ -94,7 +96,8 @@ public sealed class RelayTunnel(IConfiguration config, ILogger<RelayTunnel> logg
         long sent = 0, received = 0;
         var up = Task.Run(async () =>
         {
-            var buffer = new byte[16 * 1024];
+            // Small messages: Cloudflare dropped 16 KB ones (WhatsApp's ~40 KB key upload never arrived).
+            var buffer = new byte[MaxMessage];
             int read;
             while ((read = await stream.ReadAsync(buffer, cts.Token)) > 0)
             {
