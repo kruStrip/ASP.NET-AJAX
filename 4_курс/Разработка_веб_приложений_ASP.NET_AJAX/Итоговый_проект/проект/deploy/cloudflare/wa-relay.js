@@ -75,21 +75,26 @@ export default {
       .catch(err => { done('TCP connect failed: ' + err); try { server.close(1011, 'connect failed'); } catch {} });
 
     const writer = socket.writable.getWriter();
-    // Messages from the site carry the client's bytes. Depending on the runtime they arrive as an ArrayBuffer, a typed
-    // array, a Blob or (never expected) text: all are turned into bytes, and written strictly in arrival order.
-    const toBytes = async data =>
+    // Messages from the site carry the client's bytes. Ask for ArrayBuffers (no async Blob reading); a Blob is still
+    // handled in case the runtime ignores that. Writes are queued by the stream in call order and never awaited one
+    // by one: a slow write must not hold back the data behind it (a stalled ~40 KB key upload broke WhatsApp's login).
+    try { server.binaryType = 'arraybuffer'; } catch {}
+    const syncBytes = data =>
       data instanceof ArrayBuffer ? new Uint8Array(data)
       : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
       : typeof data === 'string' ? new TextEncoder().encode(data)
-      : new Uint8Array(await data.arrayBuffer());
-    let queue = Promise.resolve();
+      : null;
+    const fail = err => { done('write to upstream failed: ' + err); try { server.close(1011, 'upstream write failed'); } catch {} };
+    const send = bytes => {
+      if (up === 0) console.log(`[${id}] first ${bytes.byteLength} B from the site`);
+      up += bytes.byteLength;
+      writer.write(bytes).catch(fail);
+    };
+    let blobs = Promise.resolve();   // keeps order only while Blobs are being read
     server.addEventListener('message', event => {
-      queue = queue.then(async () => {
-        const data = await toBytes(event.data);
-        if (up === 0) console.log(`[${id}] first ${data.byteLength} B from the site (${Object.prototype.toString.call(event.data)})`);
-        up += data.byteLength;
-        await writer.write(data);
-      }).catch(err => { done('write to upstream failed: ' + err); try { server.close(1011, 'upstream write failed'); } catch {} });
+      const bytes = syncBytes(event.data);
+      if (bytes) blobs = blobs.then(() => send(bytes));
+      else blobs = blobs.then(async () => send(new Uint8Array(await event.data.arrayBuffer()))).catch(fail);
     });
     server.addEventListener('close', event => { done(`client closed (${event.code})`); try { socket.close(); } catch {} });
     server.addEventListener('error', () => { try { socket.close(); } catch {} });
