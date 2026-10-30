@@ -40,13 +40,27 @@ public sealed class WhatsAppChannel(HttpClient http, IConfiguration config) : IM
 
     public async Task<bool> IsReadyAsync(CancellationToken ct) => (await StateAsync(ct)).Status == "WORKING";
 
-    /// <summary>Creates and starts the session (or starts the existing one); WAHA then shows a QR code to scan.</summary>
+    /// <summary>
+    /// Creates and starts the session, or restarts it when it is stuck (FAILED/STARTING); WAHA then shows a QR code.
+    /// A plain "start" of a failed session does nothing, so a stuck one is stopped and started again.
+    /// </summary>
     public async Task StartAsync(CancellationToken ct)
     {
-        using var create = await http.PostAsJsonAsync("api/sessions", new { name = Session }, ct);
-        if (create.IsSuccessStatusCode) return;
+        var state = (await StateAsync(ct)).Status;
+        if (state is "NOT_CONFIGURED" or "UNAVAILABLE" or "UNAUTHORIZED")
+            throw new BusinessException("WhatsApp-шлюз недоступен — сессию запустить нельзя.");
+        if (state == "NONE")
+        {
+            using var create = await http.PostAsJsonAsync("api/sessions", new { name = Session }, ct);
+            if (!create.IsSuccessStatusCode) throw new BusinessException("WhatsApp-шлюз не создал сессию: " + (int)create.StatusCode);
+            return;
+        }
+        if (state != "STOPPED")
+        {
+            using var stop = await http.PostAsync($"api/sessions/{Session}/stop", null, ct);
+        }
         using var start = await http.PostAsync($"api/sessions/{Session}/start", null, ct);
-        if (!start.IsSuccessStatusCode && start.StatusCode != HttpStatusCode.UnprocessableEntity)
+        if (!start.IsSuccessStatusCode)
             throw new BusinessException("WhatsApp-шлюз не запустил сессию: " + (int)start.StatusCode);
     }
 
