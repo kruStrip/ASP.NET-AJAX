@@ -117,6 +117,102 @@
     update();
   });
 
+  // Drop-down lists in the site palette. Browsers draw the open list of a native <select> themselves (white, system
+  // blue) and ignore page styles, so with a mouse the list is our own; the <select> stays and keeps the value, so
+  // forms, validation and "change" listeners work as before. Touch screens keep the phone's native picker.
+  if (window.matchMedia('(pointer: fine)').matches) {
+    let openMenu = null;
+    const close = () => { if (!openMenu) return; openMenu.list.remove(); openMenu.select.setAttribute('aria-expanded', 'false'); openMenu = null; };
+    const choose = (select, index) => {
+      if (index < 0 || select.options[index].disabled) return;
+      const changed = select.selectedIndex !== index;
+      select.selectedIndex = index;
+      close();
+      select.focus({ preventScroll: true });
+      if (changed) select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const open = select => {
+      close();
+      const list = document.createElement('ul');
+      list.className = 'select-menu';
+      list.setAttribute('role', 'listbox');
+      Array.from(select.options).forEach((option, index) => {
+        const item = document.createElement('li');
+        item.setAttribute('role', 'option');
+        item.textContent = option.text;
+        item.dataset.index = String(index);
+        if (option.disabled) item.setAttribute('aria-disabled', 'true');
+        if (index === select.selectedIndex) item.setAttribute('aria-selected', 'true');
+        list.append(item);
+      });
+      list.addEventListener('mousedown', e => e.preventDefault()); // keep focus on the select
+      list.addEventListener('click', e => {
+        const item = e.target instanceof Element ? e.target.closest('li') : null;
+        if (item) choose(select, Number(item.dataset.index));
+      });
+      list.addEventListener('mousemove', e => {
+        const item = e.target instanceof Element ? e.target.closest('li') : null;
+        if (item) highlight(item);
+      });
+      document.body.append(list);
+      const box = select.getBoundingClientRect();
+      const below = window.innerHeight - box.bottom;
+      list.style.left = `${box.left + window.scrollX}px`;
+      list.style.width = `${box.width}px`;
+      list.style.maxHeight = `${Math.max(160, Math.min(320, Math.max(below, box.top) - 16))}px`;
+      if (below < 200 && box.top > below) list.style.top = `${box.top + window.scrollY - list.offsetHeight - 6}px`;
+      else list.style.top = `${box.bottom + window.scrollY + 6}px`;
+      select.setAttribute('aria-expanded', 'true');
+      openMenu = { select, list };
+      highlight(list.children[select.selectedIndex] || list.firstElementChild);
+    };
+    const highlight = item => {
+      if (!openMenu || !item) return;
+      openMenu.list.querySelector('.active')?.classList.remove('active');
+      item.classList.add('active');
+      // Scroll only inside the list: scrollIntoView would also move the page and close the menu.
+      const list = openMenu.list;
+      if (item.offsetTop < list.scrollTop) list.scrollTop = item.offsetTop - 6;
+      else if (item.offsetTop + item.offsetHeight > list.scrollTop + list.clientHeight)
+        list.scrollTop = item.offsetTop + item.offsetHeight - list.clientHeight + 6;
+    };
+    const enhance = select => {
+      if (select.multiple || select.size > 1 || select.dataset.nativeSelect !== undefined) return;
+      select.setAttribute('aria-haspopup', 'listbox');
+      select.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        e.preventDefault();                        // no native popup
+        select.focus({ preventScroll: true });
+        openMenu?.select === select ? close() : open(select);
+      });
+      select.addEventListener('keydown', e => {
+        const menu = openMenu?.select === select ? openMenu : null;
+        if (!menu) {
+          if (e.key === ' ' || e.key === 'Enter' || (e.altKey && e.key === 'ArrowDown')) { e.preventDefault(); open(select); }
+          return;                                  // arrows on a closed list change the value natively
+        }
+        const items = Array.from(menu.list.children);
+        let i = items.indexOf(menu.list.querySelector('.active'));
+        if (e.key === 'ArrowDown') { e.preventDefault(); highlight(items[Math.min(items.length - 1, i + 1)]); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(items[Math.max(0, i - 1)]); }
+        else if (e.key === 'Home') { e.preventDefault(); highlight(items[0]); }
+        else if (e.key === 'End') { e.preventDefault(); highlight(items[items.length - 1]); }
+        else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(select, i); }
+        else if (e.key === 'Escape' || e.key === 'Tab') { close(); }
+      });
+      select.addEventListener('blur', () => { if (openMenu?.select === select) close(); });
+    };
+    document.querySelectorAll('select').forEach(enhance);
+    document.addEventListener('mousedown', e => {
+      if (openMenu && !(e.target instanceof Node && (openMenu.list.contains(e.target) || openMenu.select.contains(e.target)))) close();
+    });
+    window.addEventListener('resize', close);
+    // The list is positioned on the page, so it moves with the page; only a scrolling box around the select detaches it.
+    document.addEventListener('scroll', e => {
+      if (openMenu && e.target instanceof Element && e.target !== openMenu.list && e.target.contains(openMenu.select)) close();
+    }, true);
+  }
+
   // Phone fields "+7 (900) 000-00-00": digits are typed, the brackets, spaces and dashes appear by themselves.
   // A pasted 8 900 … or +7 900 … is understood too; the server normalises the number again in any case.
   const formatPhone = digits => {
