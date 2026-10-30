@@ -13,6 +13,7 @@
 <p><a href="tel:@b.Phone">@b.Phone</a> @if (!string.IsNullOrWhiteSpace(b.Telegram)) { <span>· Telegram: @b.Telegram</span> }</p>
 <p class="muted">Свободно мест на игре: @Model.RemainingBySession.GetValueOrDefault(b.GameSessionId) · ID @b.Id.ToString()[..8]</p>
 <span class="status confirmed">Оплата подтверждена</span>
+<partial name="_MessageStatus" model="b.Messages" />
 @if (Model.AwaitingSurcharge.TryGetValue(b.Id, out var change))
 {
     <p class="alert">Ожидает доплаты: @change.OldQuantity → <b>@change.NewQuantity</b> бил., <b>@change.Amount.ToString("N0") ₽</b></p>

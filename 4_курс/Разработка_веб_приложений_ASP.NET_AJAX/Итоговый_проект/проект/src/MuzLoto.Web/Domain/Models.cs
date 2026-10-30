@@ -84,6 +84,7 @@ public class Booking
     public ICollection<BookingStatusHistory> StatusHistory { get; set; } = new List<BookingStatusHistory>();
     public ICollection<ExternalSubmission> ExternalSubmissions { get; set; } = new List<ExternalSubmission>();
     public ICollection<QuantityChange> QuantityChanges { get; set; } = new List<QuantityChange>();
+    public ICollection<OutgoingMessage> Messages { get; set; } = new List<OutgoingMessage>();
 }
 
 public enum PaymentStatus { Confirmed }
@@ -189,3 +190,29 @@ public class PaymentSettings
     public int QrVersion { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
+
+public enum MessageChannel { Telegram, WhatsApp }
+
+/// <summary>Pending: waits for its turn (or for the channel to be connected); Skipped: the customer has no such messenger.</summary>
+public enum OutgoingMessageStatus { Pending, Sent, Failed, Skipped }
+
+/// <summary>
+/// A message to the customer, written in the same transaction as the confirmed payment (outbox): a crash or an
+/// unavailable messenger never loses it, and it is sent at most once. A background service delivers it.
+/// </summary>
+public class OutgoingMessage
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid BookingId { get; set; }
+    public Booking Booking { get; set; } = null!;
+    public MessageChannel Channel { get; set; }
+    public OutgoingMessageStatus Status { get; set; } = OutgoingMessageStatus.Pending;
+    public string Text { get; set; } = string.Empty;
+    public int Attempts { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset NextAttemptAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? SentAt { get; set; }
+    /// <summary>Why it was not delivered, in words staff understand.</summary>
+    public string? LastError { get; set; }
+}
+

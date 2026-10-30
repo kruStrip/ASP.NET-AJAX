@@ -47,6 +47,20 @@ bash scripts/deploy.sh      # сборка образа локально, заг
 Первое развёртывание: `MUZLOTO_ADMIN_EMAIL=... bash scripts/deploy.sh` — создаст `.env` и покажет пароль администратора один раз.
 Сервер иногда сбрасывает SSH-подключения (боты, `MaxStartups`), скрипт повторяет шаги сам.
 
+## Мессенджеры (Telegram и WhatsApp)
+
+Сообщение «ваша игра подтверждена» уходит клиенту после подтверждения оплаты. Ключи и сессии — только на сервере:
+
+| Переменная в `/home/BocA/muzloto/.env` | Что это |
+|---|---|
+| `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | приложение Telegram, выдаются на https://my.telegram.org → API development tools |
+| `TELEGRAM_PHONE` | номер личного аккаунта, с которого пишем |
+| `WAHA_API_KEY` | ключ шлюза WhatsApp (контейнер `waha`, только во внутренней сети) |
+
+После изменения `.env`: `docker compose up -d`. Затем на сайте «Управление → Мессенджеры»: «Получить код и подключить»
+для Telegram (код придёт в Telegram), «Подключить номер» для WhatsApp и скан QR-кода телефоном с отдельным номером.
+Сессия Telegram хранится в томе `appdata` (`/data/messengers`), WhatsApp — в томе `wahadata`.
+
 ## Откат и диагностика
 
 ```bash

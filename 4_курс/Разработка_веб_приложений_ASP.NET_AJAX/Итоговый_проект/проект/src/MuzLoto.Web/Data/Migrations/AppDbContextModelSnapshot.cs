@@ -492,6 +492,52 @@ namespace MuzLoto.Web.Data.Migrations
                     b.ToTable("GameSessions");
                 });
 
+            modelBuilder.Entity("MuzLoto.Web.Domain.OutgoingMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId", "Channel")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("OutgoingMessages");
+                });
+
             modelBuilder.Entity("MuzLoto.Web.Domain.Payment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -786,6 +832,17 @@ namespace MuzLoto.Web.Data.Migrations
                     b.Navigation("Game");
                 });
 
+            modelBuilder.Entity("MuzLoto.Web.Domain.OutgoingMessage", b =>
+                {
+                    b.HasOne("MuzLoto.Web.Domain.Booking", "Booking")
+                        .WithMany("Messages")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("MuzLoto.Web.Domain.Payment", b =>
                 {
                     b.HasOne("MuzLoto.Web.Domain.Booking", "Booking")
@@ -843,6 +900,8 @@ namespace MuzLoto.Web.Data.Migrations
             modelBuilder.Entity("MuzLoto.Web.Domain.Booking", b =>
                 {
                     b.Navigation("ExternalSubmissions");
+
+                    b.Navigation("Messages");
 
                     b.Navigation("Payment");
 

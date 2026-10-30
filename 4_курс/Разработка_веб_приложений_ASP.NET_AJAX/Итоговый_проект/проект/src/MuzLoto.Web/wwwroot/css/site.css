@@ -167,3 +167,8 @@ select option:checked{background:#7c0103 linear-gradient(#7c0103,#7c0103);color:
 .file-field .file-native{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .file-field .file-name{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
 .file-field.has-file .file-name{color:var(--text)}
+/* Customer messages: status chips in the paid booking card */
+.message-status{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0;font-size:12px}
+.message-status .msg{padding:3px 8px;border-radius:999px;background:rgba(0,0,0,.28)}
+.message-status .msg.ok{background:rgba(255,255,255,.18)}
+.message-status .msg.fail{text-decoration:underline dotted}

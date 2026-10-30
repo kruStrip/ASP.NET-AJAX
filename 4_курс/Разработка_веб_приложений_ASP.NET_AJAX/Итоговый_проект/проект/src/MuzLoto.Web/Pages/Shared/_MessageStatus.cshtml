@@ -1,0 +1,19 @@
+@using MuzLoto.Web.Domain
+@model ICollection<OutgoingMessage>
+@* «Ваша игра подтверждена» in Telegram / WhatsApp: what happened to each message. *@
+@if (Model.Count > 0)
+{
+    <p class="message-status">
+    @foreach (var m in Model.OrderBy(x => x.Channel))
+    {
+        var (text, cls) = m.Status switch
+        {
+            OutgoingMessageStatus.Sent => ("отправлено", "ok"),
+            OutgoingMessageStatus.Skipped => ("не отправлено", "skip"),
+            OutgoingMessageStatus.Failed => ("ошибка", "fail"),
+            _ => ("в очереди", "wait")
+        };
+        <span class="msg @cls" title="@m.LastError">@m.Channel: @text</span>
+    }
+    </p>
+}

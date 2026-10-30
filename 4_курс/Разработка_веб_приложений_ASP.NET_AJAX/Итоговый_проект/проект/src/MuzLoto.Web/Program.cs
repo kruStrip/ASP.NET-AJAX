@@ -168,6 +168,18 @@ builder.Services.AddScoped<CoverImages>();
 builder.Services.AddScoped<FormDesignerWebhook>();
 builder.Services.AddScoped<PublicSchedule>();
 builder.Services.AddScoped<ClientAccounts>();
+// Messages to customers after a confirmed payment: Telegram (personal account) and WhatsApp (WAHA gateway).
+builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.TelegramChannel>();
+builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.TelegramChannel>());
+builder.Services.AddHttpClient<MuzLoto.Web.Services.Messaging.WhatsAppChannel>(http =>
+{
+    if (builder.Configuration["Waha:Url"] is { Length: > 0 } url) http.BaseAddress = new Uri(url.TrimEnd('/') + "/");
+    http.DefaultRequestHeaders.Add("X-Api-Key", builder.Configuration["Waha:ApiKey"] ?? "");
+    http.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddTransient<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.WhatsAppChannel>());
+builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.MessageDispatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.MessageDispatcher>());
 builder.Services.AddSingleton<PaymentLinks>();
 
 // The public booking form is the only anonymous write: limit POSTs per client address against spam.

@@ -20,7 +20,7 @@ public abstract class BookingListBase(AppDbContext db, IAuthorizationService aut
 
     protected IQueryable<Booking> ScopedBookings()
     {
-        var query = db.Bookings.Include(x => x.GameSession).ThenInclude(x => x.Game).AsNoTracking();
+        var query = db.Bookings.Include(x => x.GameSession).ThenInclude(x => x.Game).Include(x => x.Messages).AsNoTracking();
         if (!User.IsInRole("Admin"))
         {
             var uid = UserId;

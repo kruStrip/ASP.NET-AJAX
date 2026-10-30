@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<ExternalSubmission> ExternalSubmissions => Set<ExternalSubmission>();
     public DbSet<QuantityChange> QuantityChanges => Set<QuantityChange>();
     public DbSet<PaymentSettings> PaymentSettings => Set<PaymentSettings>();
+    public DbSet<OutgoingMessage> OutgoingMessages => Set<OutgoingMessage>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -87,6 +88,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             // One surcharge waiting at a time per order.
             e.HasIndex(x => x.BookingId).IsUnique().HasFilter("\"Status\" = 0")
                 .HasDatabaseName("IX_QuantityChanges_BookingId_Awaiting");
+        });
+        b.Entity<OutgoingMessage>(e =>
+        {
+            e.HasOne(x => x.Booking).WithMany(bk => bk.Messages).HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Text).HasMaxLength(4000).IsRequired();
+            e.Property(x => x.LastError).HasMaxLength(500);
+            e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            // One confirmation message per booking and channel.
+            e.HasIndex(x => new { x.BookingId, x.Channel }).IsUnique();
         });
         b.Entity<PaymentSettings>(e =>
         {

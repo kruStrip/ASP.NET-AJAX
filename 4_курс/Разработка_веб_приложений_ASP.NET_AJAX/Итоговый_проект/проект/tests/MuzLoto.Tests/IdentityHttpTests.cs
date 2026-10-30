@@ -26,6 +26,8 @@ public sealed class AppFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Storage__ImagesPath", ImagesPath);
         Environment.SetEnvironmentVariable("Integration__Secret", IntegrationSecret);
         Environment.SetEnvironmentVariable("RateLimit__BookingFormPostsPerTenMinutes", "100000");
+        // The real background sender is off in tests; CustomerMessagesTests runs it by hand with fake messengers.
+        Environment.SetEnvironmentVariable("Messaging__Enabled", "false");
     }
 
     public const string IntegrationSecret = "test-integration-secret-0123456789";

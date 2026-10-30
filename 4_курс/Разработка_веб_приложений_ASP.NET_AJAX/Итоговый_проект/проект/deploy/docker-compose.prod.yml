@@ -35,6 +35,14 @@ services:
       BootstrapAdmin__Email: ${MUZLOTO_ADMIN_EMAIL:?set in .env}
       BootstrapAdmin__Password: ${MUZLOTO_ADMIN_PASSWORD:?set in .env}
       ForwardedHeaders__Enabled: "true"
+      Site__PublicUrl: https://muzloto.b-o-c-a.ru
+      # Customer messages after a confirmed payment. Empty values = the messenger is simply not connected yet.
+      Messaging__DataPath: /data/messengers
+      Telegram__ApiId: ${TELEGRAM_API_ID:-}
+      Telegram__ApiHash: ${TELEGRAM_API_HASH:-}
+      Telegram__Phone: ${TELEGRAM_PHONE:-}
+      Waha__Url: http://waha:3000
+      Waha__ApiKey: ${WAHA_API_KEY:-}
     volumes:
       - appdata:/data
     mem_limit: 320m
@@ -43,9 +51,26 @@ services:
       proxy:
         aliases: [muzloto-app]
 
+  # WhatsApp gateway for the separate WhatsApp number (linked once by a QR code on «Мессенджеры»).
+  # Only the app can reach it: no published ports, internal network only.
+  waha:
+    image: devlikeapro/waha:noweb            # browserless image: small and light
+    restart: unless-stopped
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WAHA_DASHBOARD_ENABLED: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+      WAHA_PRINT_QR: "false"
+    volumes:
+      - wahadata:/app/.sessions
+    mem_limit: 256m
+    networks: [internal]
+
 volumes:
   pgdata:
   appdata:
+  wahadata:
 
 networks:
   internal: {}

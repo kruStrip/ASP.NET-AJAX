@@ -1,0 +1,74 @@
+@page "/messengers"
+@model MuzLoto.Web.Pages.Messengers.IndexModel
+@using MuzLoto.Web.Domain
+@{ ViewData["Title"] = "Мессенджеры"; var tg = Model.Telegram; }
+<div class="page-heading"><div><div class="eyebrow">Управление</div><h1>Мессенджеры</h1>
+<p class="muted">Когда оплата подтверждена, клиенту уходит сообщение «Ваша игра подтверждена» в Telegram и WhatsApp.
+Сообщения отправляются по очереди с паузой, чтобы мессенджеры не сочли это рассылкой.</p></div></div>
+
+<section class="panel">
+    <h2>Telegram — личный аккаунт</h2>
+    @if (!tg.IsConfigured)
+    {
+        <p>Не настроен. На сервере в <code>.env</code> нужны <code>TELEGRAM_API_ID</code>, <code>TELEGRAM_API_HASH</code> (выдаются на my.telegram.org) и <code>TELEGRAM_PHONE</code> — номер аккаунта.</p>
+    }
+    else if (Model.TelegramReady)
+    {
+        <p>Подключён: <b>@tg.AccountName</b> (@tg.Phone).</p>
+        <form method="post" asp-page-handler="TelegramLogout" data-confirm="Отключить Telegram? Новые сообщения будут ждать повторного подключения.">
+            <button type="submit" class="button secondary">Отключить</button></form>
+    }
+    else if (tg.NextLoginStep is "verification_code" or "password")
+    {
+        <form method="post" asp-page-handler="TelegramContinue" class="slot-form">
+            <label for="tg-value">@(tg.NextLoginStep == "password" ? "Пароль двухэтапной проверки" : "Код из Telegram (пришёл в чат «Telegram» на аккаунте " + tg.Phone + ")")</label>
+            <input id="tg-value" name="value" type="@(tg.NextLoginStep == "password" ? "password" : "text")" autocomplete="one-time-code" required />
+            <div><button type="submit" class="button">Подтвердить</button></div>
+        </form>
+    }
+    else
+    {
+        <p>Аккаунт @tg.Phone не подключён.</p>
+        <form method="post" asp-page-handler="TelegramCode"><button type="submit" class="button">Получить код и подключить</button></form>
+    }
+</section>
+
+<section class="panel">
+    <h2>WhatsApp — отдельный номер</h2>
+    <p>Состояние: <b>@IndexModel.WhatsAppText(Model.WhatsApp.Status)</b>@if (Model.WhatsApp.Account is not null) { <span> — @Model.WhatsApp.Account</span> }</p>
+    @if (Model.WhatsApp.Status == "SCAN_QR_CODE")
+    {
+        <p>Откройте WhatsApp на телефоне с этим номером → «Связанные устройства» → «Привязка устройства» и отсканируйте код. Страница обновится, когда номер подключится.</p>
+        <img class="pay-qr" src="@Url.Page(null, "Qr")" alt="QR-код для подключения WhatsApp" data-refresh-seconds="20" />
+    }
+    @if (Model.WhatsApp.Status is "NONE" or "STOPPED" or "FAILED")
+    {
+        <form method="post" asp-page-handler="WhatsAppStart"><button type="submit" class="button">Подключить номер</button></form>
+    }
+    @if (Model.WhatsApp.Status == "WORKING")
+    {
+        <form method="post" asp-page-handler="WhatsAppLogout" data-confirm="Отключить WhatsApp? Новые сообщения будут ждать повторного подключения.">
+            <button type="submit" class="button secondary">Отключить</button></form>
+    }
+</section>
+
+<section class="panel">
+    <h2>Последние сообщения</h2>
+    <div class="table-wrap"><table class="table">
+        <thead><tr><th>Команда и игра</th><th>Канал</th><th>Статус</th><th>Когда</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var m in Model.Recent)
+        {
+            <tr>
+                <td>@m.Booking.TeamName — @m.Booking.GameSession.Game.Title<br /><span class="muted">@m.Booking.Phone @m.Booking.Telegram</span></td>
+                <td>@m.Channel</td>
+                <td>@IndexModel.StatusText(m.Status)@if (m.LastError is not null) { <br /><span class="muted">@m.LastError</span> }</td>
+                <td>@ScheduleTime.Format(m.SentAt ?? m.CreatedAt, ScheduleTime.DefaultTimeZone)</td>
+                <td>@if (m.Status is OutgoingMessageStatus.Failed or OutgoingMessageStatus.Skipped)
+                    { <form method="post" asp-page-handler="Retry"><input type="hidden" name="id" value="@m.Id" /><button class="small-button" type="submit">Повторить</button></form> }</td>
+            </tr>
+        }
+        </tbody>
+    </table></div>
+    @if (Model.Recent.Count == 0) { <p class="muted">Сообщений пока не было.</p> }
+</section>

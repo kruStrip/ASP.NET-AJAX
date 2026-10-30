@@ -141,6 +141,12 @@ public sealed class BookingWorkflow(
                 NewStatus = BookingStatus.Confirmed, ChangedByUserId = userId,
                 ChangedAt = now, Reason = "Ручное подтверждение оплаты"
             });
+            // The customer's "your game is confirmed" messages are queued in the same transaction (outbox).
+            var game = await db.Games.AsNoTracking().SingleAsync(x => x.Id == session.GameId, ct);
+            var text = Messaging.ConfirmationMessage.Build(booking, session, game, config["Site:PublicUrl"] ?? "https://muzloto.b-o-c-a.ru");
+            var queued = await db.OutgoingMessages.Where(x => x.BookingId == booking.Id).Select(x => x.Channel).ToListAsync(ct);
+            foreach (var channel in Enum.GetValues<MessageChannel>().Except(queued))
+                db.OutgoingMessages.Add(new OutgoingMessage { BookingId = booking.Id, Channel = channel, Text = text, CreatedAt = now, NextAttemptAt = now });
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             sessionId = session.Id;
