@@ -9,12 +9,15 @@ import { connect } from 'cloudflare:sockets';
 
 const ALLOWED_HOSTS = /^([a-z0-9-]+\.)*(whatsapp\.com|whatsapp\.net)$/i;
 // Telegram data centres (MTProto), by address.
-const TELEGRAM_NETS = [['149.154.160.0', 20], ['91.108.4.0', 22], ['91.108.8.0', 22], ['91.108.12.0', 22],
-  ['91.108.16.0', 22], ['91.108.56.0', 22], ['95.161.64.0', 20]];
+const TELEGRAM_NETS = [
+  { net: '149.154.160.0', bits: 20 }, { net: '91.108.4.0', bits: 22 }, { net: '91.108.8.0', bits: 22 },
+  { net: '91.108.12.0', bits: 22 }, { net: '91.108.16.0', bits: 22 }, { net: '91.108.56.0', bits: 22 },
+  { net: '95.161.64.0', bits: 20 }
+];
 
 const ipToInt = ip => ip.split('.').reduce((n, p) => (n << 8) + Number(p), 0) >>> 0;
 const isTelegramIp = host => /^\d+\.\d+\.\d+\.\d+$/.test(host) &&
-  TELEGRAM_NETS.some(([net, bits]) => (ipToInt(host) >>> (32 - bits)) === (ipToInt(net) >>> (32 - bits)));
+  TELEGRAM_NETS.some(({ net, bits }) => (ipToInt(host) >>> (32 - bits)) === (ipToInt(net) >>> (32 - bits)));
 
 export default {
   async fetch(request, env) {
