@@ -44,45 +44,6 @@ public sealed class CoverImages(AppDbContext db, IConfiguration config, IWebHost
         ".png" => "image/png", ".webp" => "image/webp", ".svg" => "image/svg+xml", _ => "image/jpeg"
     };
 
-    // ---- Form images: ten fixed public links /i/1 … /i/10 ----
-
-    public async Task<ImageSlot> SaveSlotAsync(int number, IFormFile file, string? note, CancellationToken ct = default)
-    {
-        if (number is < 1 or > ImageSlot.Count) throw new BusinessException("Нет такой ссылки.", 404);
-        var extension = await CheckImageAsync(file, ct);
-        var slot = await db.ImageSlots.SingleOrDefaultAsync(x => x.Number == number, ct);
-        var previous = slot is not null && !slot.StorageKey.StartsWith('/') ? FullPath(slot.StorageKey) : null;
-        if (slot is null) db.ImageSlots.Add(slot = new ImageSlot { Number = number, Version = 1 });
-        else slot.Version++;
-        slot.StorageKey = $"slots/{number}-v{slot.Version}{extension}";
-        slot.UpdatedAt = DateTimeOffset.UtcNow;
-        if (note is not null) slot.Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
-        await WriteAsync(file, slot.StorageKey, ct);
-        var target = FullPath(slot.StorageKey);
-        try { await db.SaveChangesAsync(ct); }
-        catch { File.Delete(target); throw; }
-        if (previous is not null && previous != target) File.Delete(previous);
-        return slot;
-    }
-
-    public async Task UpdateSlotNoteAsync(int number, string? note, CancellationToken ct = default)
-    {
-        var slot = await db.ImageSlots.SingleOrDefaultAsync(x => x.Number == number, ct)
-            ?? throw new BusinessException("Сначала загрузите картинку.", 404);
-        slot.Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
-        await db.SaveChangesAsync(ct);
-    }
-
-    public async Task DeleteSlotAsync(int number, CancellationToken ct = default)
-    {
-        var slot = await db.ImageSlots.SingleOrDefaultAsync(x => x.Number == number, ct);
-        if (slot is null) return;
-        var file = slot.StorageKey.StartsWith('/') ? null : FullPath(slot.StorageKey);
-        db.ImageSlots.Remove(slot);
-        await db.SaveChangesAsync(ct);
-        if (file is not null) File.Delete(file);
-    }
-
     // ---- Payment QR code shown on the payment screen ----
 
     public async Task SavePaymentQrAsync(IFormFile file, CancellationToken ct = default)
@@ -110,12 +71,12 @@ public sealed class CoverImages(AppDbContext db, IConfiguration config, IWebHost
         File.Delete(FullPath(key));
     }
 
-    public async Task<SlotFile?> OpenPaymentQrAsync(CancellationToken ct = default)
+    public async Task<StoredFile?> OpenPaymentQrAsync(CancellationToken ct = default)
     {
         var settings = await db.PaymentSettings.AsNoTracking().SingleOrDefaultAsync(ct);
         if (settings?.QrStorageKey is not { } key) return null;
         var path = FullPath(key);
-        return File.Exists(path) ? new SlotFile(path, ContentType(path), settings.QrVersion, settings.UpdatedAt) : null;
+        return File.Exists(path) ? new StoredFile(path, ContentType(path), settings.QrVersion, settings.UpdatedAt) : null;
     }
 
     /// <summary>The single settings row, created on first use (tracked).</summary>
@@ -126,18 +87,8 @@ public sealed class CoverImages(AppDbContext db, IConfiguration config, IWebHost
         return settings;
     }
 
-    public sealed record SlotFile(string Path, string ContentType, int Version, DateTimeOffset UpdatedAt);
+    public sealed record StoredFile(string Path, string ContentType, int Version, DateTimeOffset UpdatedAt);
 
-    /// <summary>The file behind a public link; static demo keys ("/img/…") are served from wwwroot.</summary>
-    public async Task<SlotFile?> OpenSlotAsync(int number, CancellationToken ct = default)
-    {
-        var slot = await db.ImageSlots.AsNoTracking().SingleOrDefaultAsync(x => x.Number == number, ct);
-        if (slot is null) return null;
-        var path = slot.StorageKey.StartsWith('/')
-            ? Path.Combine(env.WebRootPath, slot.StorageKey.TrimStart('/'))
-            : FullPath(slot.StorageKey);
-        return File.Exists(path) ? new SlotFile(path, ContentType(path), slot.Version, slot.UpdatedAt) : null;
-    }
 
     public async Task<GameImage> SaveAsync(Guid sessionId, IFormFile file, CancellationToken ct = default)
     {
@@ -163,6 +114,29 @@ public sealed class CoverImages(AppDbContext db, IConfiguration config, IWebHost
         catch { File.Delete(target); throw; }
         if (previousFile is not null && previousFile != target) File.Delete(previousFile);
         return image;
+    }
+
+    /// <summary>A new date of an existing game gets its own copy of the latest date's picture (if there is one).</summary>
+    public async Task CopyLatestAsync(Guid gameId, Guid sessionId, CancellationToken ct = default)
+    {
+        var source = await db.GameImages.AsNoTracking()
+            .Where(x => x.GameSession.GameId == gameId && x.GameSessionId != sessionId)
+            .OrderByDescending(x => x.GameSession.StartsAt).ThenBy(x => x.SortOrder).FirstOrDefaultAsync(ct);
+        if (source is null) return;
+        var image = new GameImage { GameSessionId = sessionId, SortOrder = 0, Version = 1 };
+        if (source.StorageKey.StartsWith('/')) image.StorageKey = source.StorageKey; // static demo file
+        else
+        {
+            var from = FullPath(source.StorageKey);
+            if (!File.Exists(from)) return;
+            // A separate file: replacing or deleting one date's picture never touches the other.
+            image.StorageKey = $"{sessionId:N}/{image.Id:N}-v1{Path.GetExtension(from)}";
+            var target = FullPath(image.StorageKey);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(from, target);
+        }
+        db.GameImages.Add(image);
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task<(string Path, string ContentType)?> OpenAsync(Guid imageId, CancellationToken ct = default)

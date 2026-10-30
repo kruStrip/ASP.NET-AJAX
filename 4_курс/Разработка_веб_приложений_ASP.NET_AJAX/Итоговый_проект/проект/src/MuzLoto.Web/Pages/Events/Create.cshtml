@@ -5,9 +5,12 @@
 <h1>@(Model.ExistingGame is null ? "Добавить игру" : "Новая дата: " + Model.ExistingGame.Title)</h1>
 @if (Model.ExistingGame is not null) { <p class="muted">Описание и название берутся из игры; у новой даты будет свой идентификатор.</p> }
 </div></div>
-<section class="panel form-panel"><form method="post">
+<section class="panel form-panel"><form method="post" enctype="multipart/form-data">
 <div asp-validation-summary="ModelOnly" class="error-text"></div>
 <input type="hidden" asp-for="GameId" />
 <partial name="_SessionFields" for="Input" view-data='new ViewDataDictionary(ViewData) { ["ShowGame"] = Model.ExistingGame is null }' />
+<label for="cover">Картинка игры — афиша в форме записи (JPEG, PNG, WebP, до 5 МБ)</label>
+<input id="cover" type="file" name="cover" accept="image/jpeg,image/png,image/webp" />
+@if (Model.ExistingGame is not null) { <p class="muted">Если не выбрать файл, возьмём картинку последней даты этой игры.</p> }
 <div class="actions"><button type="submit" class="button">Создать</button><a asp-page="/Events/Index" class="button secondary">Отмена</a></div>
 </form></section>

@@ -99,6 +99,41 @@ public sealed class EventsUiHttpTests(AppFactory app)
         Assert.False(await DbAsync(db => db.Games.AnyAsync(x => x.Title == title)));
     }
 
+    private static async Task<HttpResponseMessage> CreateWithCoverAsync(HttpClient admin, string url, Dictionary<string, string> fields, byte[]? cover)
+    {
+        var form = new MultipartFormDataContent { { new StringContent(await AppFactory.AntiforgeryTokenAsync(admin, url)), "__RequestVerificationToken" } };
+        foreach (var (key, value) in fields) form.Add(new StringContent(value), key);
+        if (cover is not null)
+            form.Add(new ByteArrayContent(cover) { Headers = { ContentType = new MediaTypeHeaderValue("image/png") } }, "cover", "poster.png");
+        return await admin.PostAsync(url, form);
+    }
+
+    [Fact]
+    public async Task Create_TakesThePicture_NewDateCopiesIt()
+    {
+        var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
+        var created = await CreateWithCoverAsync(admin, "/events/create", GameFields("Афиша " + Guid.NewGuid().ToString("N")[..6]), Png);
+        Assert.Equal(HttpStatusCode.Redirect, created.StatusCode);
+        var id = IdFrom(created);
+        var first = await DbAsync(db => db.GameImages.AsNoTracking().SingleAsync(x => x.GameSessionId == id));
+        Assert.Equal(Png, await (await app.Browser().GetAsync($"/images/{first.Id}")).Content.ReadAsByteArrayAsync());
+
+        // Another date of the same game without a file: it gets its own copy of the picture.
+        var gameId = await DbAsync(db => db.GameSessions.Where(x => x.Id == id).Select(x => x.GameId).SingleAsync());
+        var next = GameFields("не используется");
+        next["Input.LocalStart"] = DateTime.Today.AddDays(16).ToString("dd.MM.yyyy 19:00");
+        var second = await CreateWithCoverAsync(admin, $"/events/create?gameId={gameId}", next, null);
+        var copy = await DbAsync(db => db.GameImages.AsNoTracking().SingleAsync(x => x.GameSessionId == IdFrom(second)));
+        Assert.NotEqual(first.StorageKey, copy.StorageKey);
+        Assert.Equal(Png, await (await app.Browser().GetAsync($"/images/{copy.Id}")).Content.ReadAsByteArrayAsync());
+
+        // A bad file does not lose the game: it is created, the admin is told why the picture was skipped.
+        var bad = await CreateWithCoverAsync(admin, "/events/create", GameFields("Без афиши " + Guid.NewGuid().ToString("N")[..6]), "not an image"u8.ToArray());
+        var badId = IdFrom(bad);
+        Assert.False(await DbAsync(db => db.GameImages.AnyAsync(x => x.GameSessionId == badId)));
+        Assert.Contains("Картинка не сохранена", WebUtility.HtmlDecode(await admin.GetStringAsync($"/events/{badId}")));
+    }
+
     [Fact]
     public async Task Cover_UploadReplaceAndReject_StaysWithSessionWhenDateChanges()
     {

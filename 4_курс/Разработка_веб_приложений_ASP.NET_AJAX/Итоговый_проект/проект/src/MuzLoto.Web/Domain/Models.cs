@@ -174,22 +174,6 @@ public class QuantityChange
 }
 
 /// <summary>
-/// One of ten fixed public image links (/i/1 … /i/10) used by the FormDesigner form. The link never changes;
-/// staff replace the picture behind it.
-/// </summary>
-public class ImageSlot
-{
-    public const int Count = 10;
-    public int Number { get; set; }
-    /// <summary>Uploaded file key under Storage:ImagesPath, or a "/…" path of a static file in wwwroot.</summary>
-    public string StorageKey { get; set; } = string.Empty;
-    public int Version { get; set; } = 1;
-    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
-    /// <summary>Staff note: what the picture is for, e.g. "05.11 — Хиты 2000-х".</summary>
-    public string? Note { get; set; }
-}
-
-/// <summary>
 /// What the customer sees after «К оплате»: free text (transfer number, recipient, where to send the receipt)
 /// and an optional QR code. Kept in the database, edited by an admin: payment details never go into the repository.
 /// </summary>

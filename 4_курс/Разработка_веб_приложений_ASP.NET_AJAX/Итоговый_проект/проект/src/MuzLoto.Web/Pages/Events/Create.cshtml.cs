@@ -10,7 +10,7 @@ namespace MuzLoto.Web.Pages.Events;
 
 /// <summary>Creates a new game with its first date, or (with ?gameId=) another date of an existing game.</summary>
 [Authorize(Roles = "Admin")]
-public class CreateModel(AppDbContext db) : PageModel
+public class CreateModel(AppDbContext db, CoverImages covers) : PageModel
 {
     [BindProperty] public SessionForm Input { get; set; } = new();
     [BindProperty(SupportsGet = true)] public Guid? GameId { get; set; }
@@ -32,7 +32,7 @@ public class CreateModel(AppDbContext db) : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(CancellationToken ct)
+    public async Task<IActionResult> OnPostAsync(IFormFile? cover, CancellationToken ct)
     {
         if (GameId is not null)
         {
@@ -57,6 +57,14 @@ public class CreateModel(AppDbContext db) : PageModel
         db.GameSessions.Add(session);
         await db.SaveChangesAsync(ct);
         TempData["Notice"] = ExistingGame is null ? "Игра создана." : "Новая дата добавлена.";
+        // The picture is saved after the date exists (files are keyed by the session ID). A bad file does not
+        // undo the game: the admin sees why and can upload another one on the game page.
+        try
+        {
+            if (cover is not null) await covers.SaveAsync(session.Id, cover, ct);
+            else if (ExistingGame is not null) await covers.CopyLatestAsync(ExistingGame.Id, session.Id, ct);
+        }
+        catch (BusinessException ex) { TempData["Error"] = "Картинка не сохранена: " + ex.Message; }
         return RedirectToPage("/Events/Details", new { id = session.Id });
     }
 }

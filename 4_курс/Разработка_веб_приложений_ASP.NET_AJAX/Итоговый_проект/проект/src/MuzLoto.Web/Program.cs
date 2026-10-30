@@ -225,17 +225,6 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
-// Ten fixed public links for the FormDesigner form. The link never changes, the picture behind it can:
-// "no-cache" lets browsers keep a copy but revalidate on every load by ETag (the version), so a replaced
-// picture shows up at once and an unchanged one costs only a tiny 304.
-app.MapGet("/i/{number:int:range(1,10)}", async (int number, CoverImages images, HttpContext http, CancellationToken ct) =>
-{
-    var file = await images.OpenSlotAsync(number, ct);
-    if (file is null) return Results.NotFound();
-    http.Response.Headers.CacheControl = "no-cache";
-    return Results.File(file.Path, file.ContentType, lastModified: file.UpdatedAt,
-        entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{number}-{file.Version}\""));
-}).AllowAnonymous();
 
 // Game posters: public, the booking form shows them to every customer; cache-busted by ?v=version.
 app.MapGet("/images/{id:guid}", async (Guid id, CoverImages images, HttpContext http, CancellationToken ct) =>
