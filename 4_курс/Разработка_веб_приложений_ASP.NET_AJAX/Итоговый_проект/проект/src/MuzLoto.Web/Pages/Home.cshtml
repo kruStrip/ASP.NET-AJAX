@@ -1,7 +1,9 @@
 @page "/"
 @model MuzLoto.Web.Pages.HomeModel
 @using System.Globalization
-@{ ViewData["Title"] = "Запись на игру"; var s = Model.Selected; }
+@{ ViewData["Title"] = "Запись на игру"; var s = Model.Selected;
+   // A C# string: an "@" written inside a tag-helper attribute broke the markup («href=» in the field).
+   const string TelegramHint = "Например: @username. Не указывайте почту или ссылку."; }
 <section class="panel booking-form">
     <img class="booking-logo" src="~/img/logo.jpg" asp-append-version="true" alt="МузЛото" width="200" height="200" />
     @if (s is null)
@@ -92,7 +94,7 @@
                 <span asp-validation-for="Input.Phone" class="error-text"></span>
 
                 <label asp-for="Input.Telegram">Введите ваш Telegram ник</label>
-                <input asp-for="Input.Telegram" placeholder="Например: @@username. Не указывайте почту или ссылку." maxlength="100" />
+                <input asp-for="Input.Telegram" placeholder="@TelegramHint" maxlength="100" />
                 <span asp-validation-for="Input.Telegram" class="error-text"></span>
 
                 <label asp-for="Input.Team">Введите название команды <span class="req">*</span></label>

@@ -8,7 +8,7 @@
     <h2>Текст для оплаты</h2>
     <form method="post" asp-page-handler="Text" class="slot-form">
         <label asp-for="Instructions">Например: номер для перевода, банк, получатель и куда прислать чек</label>
-        <textarea asp-for="Instructions" rows="6" maxlength="2000" placeholder="Перевод по номеру +7 900 000-00-00 (Сбербанк), получатель Иван И.&#10;После оплаты пришлите чек в Telegram @@username"></textarea>
+        <textarea asp-for="Instructions" rows="6" maxlength="2000" placeholder="@("Перевод по номеру +7 900 000-00-00 (Сбербанк), получатель Иван И.\nПосле оплаты пришлите чек в Telegram @username")"></textarea>
         <span asp-validation-for="Instructions" class="error-text"></span>
         <div><button type="submit" class="button">Сохранить текст</button></div>
     </form>

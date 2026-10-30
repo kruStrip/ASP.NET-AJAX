@@ -71,6 +71,8 @@ public sealed class PublicBookingFormTests(AppFactory app)
         Assert.Contains("Белла снова не может выбрать", html);
         Assert.Contains("Киса Бар, Светланская 21", html);
         Assert.Contains("2 часа", html);
+        Assert.Contains("placeholder=\"Например: @username. Не указывайте почту или ссылку.\"", html);  // whole hint, intact markup
+        Assert.DoesNotContain("href=\"Например", html);
         Assert.Contains("Кол-во билетов доступных для покупки: <strong>3</strong>", html);
         var quantitySelect = Regex.Match(html, "<select[^>]*Input_Quantity.*?</select>", RegexOptions.Singleline).Value;
         Assert.Equal(["", "1", "2", "3"], Regex.Matches(quantitySelect, "<option value=\"(\\d*)\"").Select(m => m.Groups[1].Value));
