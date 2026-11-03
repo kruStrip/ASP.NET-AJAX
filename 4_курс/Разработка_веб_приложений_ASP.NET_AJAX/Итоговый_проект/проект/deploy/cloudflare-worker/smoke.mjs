@@ -63,7 +63,16 @@ const jsonCall = seen.at(-1);
 check("path and route are kept", jsonCall.url === "/bot123:ABC/sendMessage", jsonCall.url);
 check("JSON body is kept", jsonCall.body.toString() === '{"chat_id":"-100123","text":"ping"}', jsonCall.body.toString());
 
-// 5. A multipart upload (sendPhoto/sendDocument) is forwarded as multipart with the caption and the file.
+// 5. A GET with query arguments (getChat) keeps the query string.
+res = await worker.fetch(
+  new Request(base + "/bot123:ABC/getChat?chat_id=-100123", { method: "GET", headers: { "x-relay-secret": "test-secret" } }),
+  env,
+);
+text = await res.text();
+check("getChat reaches Telegram", res.status === 401 && text.includes("Unauthorized"), `${res.status} ${text.slice(0, 60)}`);
+check("query string is kept", seen.at(-1).url === "/bot123:ABC/getChat?chat_id=-100123", seen.at(-1).url);
+
+// 6. A multipart upload (sendPhoto/sendDocument) is forwarded as multipart with the caption and the file.
 const form = new FormData();
 form.set("chat_id", "-100123");
 form.set("message_thread_id", "2");

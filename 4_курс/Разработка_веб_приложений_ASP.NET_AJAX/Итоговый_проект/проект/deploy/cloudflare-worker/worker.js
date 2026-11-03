@@ -29,9 +29,12 @@ export default {
     }
     // The body is buffered so Telegram gets a normal Content-Length (it is loose with chunked uploads).
     const body = request.method === "GET" ? undefined : await request.arrayBuffer();
-    const upstream = await fetch(TELEGRAM_API + url.pathname, {
+    // The query string is kept too: getChat and friends take their arguments in it.
+    const upstream = await fetch(TELEGRAM_API + url.pathname + url.search, {
       method: request.method,
-      headers: { "content-type": request.headers.get("content-type") ?? "application/octet-stream" },
+      headers: body
+        ? { "content-type": request.headers.get("content-type") ?? "application/octet-stream" }
+        : undefined,
       body,
     });
     // Re-build the response: the body is already decompressed, so the original encoding headers must not be kept.
