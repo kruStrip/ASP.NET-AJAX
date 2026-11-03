@@ -10,7 +10,8 @@ using Xunit;
 
 namespace MuzLoto.Tests;
 
-/// <summary>«Ваша игра подтверждена» in Telegram and WhatsApp: queued with the payment, delivered by the dispatcher.</summary>
+/// <summary>«Ваша игра подтверждена» in Telegram (and only there, decision of 2026-11-03): queued with the payment,
+/// delivered by the dispatcher.</summary>
 [Trait("Category", "Integration")]
 [Collection(AppCollection.Name)]
 public sealed class CustomerMessagesTests(AppFactory app)
@@ -90,7 +91,8 @@ public sealed class CustomerMessagesTests(AppFactory app)
     {
         var booking = await ConfirmedBookingAsync();
         var messages = await MessagesAsync(booking.Id);
-        Assert.Equal([MessageChannel.Telegram, MessageChannel.WhatsApp], messages.Select(x => x.Channel));
+        // Telegram only: WhatsApp copies were switched off by the decision of 2026-11-03.
+        Assert.Equal([MessageChannel.Telegram], messages.Select(x => x.Channel));
         Assert.DoesNotContain(messages, x => x.Channel == MessageChannel.TelegramBot);  // staff bot never gets customer text
         Assert.All(messages, m => Assert.Equal(OutgoingMessageStatus.Pending, m.Status));
         var text = messages[0].Text;
@@ -102,7 +104,7 @@ public sealed class CustomerMessagesTests(AppFactory app)
 
         using (var scope = app.Services.CreateScope())   // a repeated confirmation does not queue the messages twice
             await scope.ServiceProvider.GetRequiredService<BookingWorkflow>().ConfirmAsync(booking.Id, (await app.CreateUserAsync("Admin")).Id);
-        Assert.Equal(2, (await MessagesAsync(booking.Id)).Count);
+        Assert.Single(await MessagesAsync(booking.Id));
     }
 
     [Fact]
@@ -112,9 +114,12 @@ public sealed class CustomerMessagesTests(AppFactory app)
         var booking = await ConfirmedBookingAsync(receiptKey: receiptKey);
         var messages = await MessagesAsync(booking.Id);
 
-        Assert.Equal(4, messages.Count);   // text + receipt for each of the two customer messengers
+        Assert.Equal(2, messages.Count);   // the text and then the receipt, both in Telegram
         var copies = messages.Where(x => x.Kind == OutgoingMessageKind.ReceiptCopy).ToList();
-        Assert.Equal([MessageChannel.Telegram, MessageChannel.WhatsApp], copies.Select(x => x.Channel));
+        Assert.Equal([MessageChannel.Telegram], copies.Select(x => x.Channel));
+        // A messenger cannot send text and a file together, so the text announces the file that follows.
+        Assert.EndsWith("Также дублируем ваш чек.", Assert.Single(
+            messages, x => x.Kind == OutgoingMessageKind.Confirmation).Text);
         Assert.All(copies, m => Assert.Equal(string.Empty, m.Text));   // Wazzup sends either text or a file
         Assert.All(copies, m => Assert.Contains(Path.GetFileName(receiptKey) + "?t=", m.ContentUri));
         Assert.All(copies, m => Assert.StartsWith("https://", m.ContentUri));
@@ -174,9 +179,8 @@ public sealed class CustomerMessagesTests(AppFactory app)
         var receiptKey = $"receipts/{Guid.NewGuid():N}-20261103120000000.png";
         var booking = await ConfirmedBookingAsync(receiptKey: receiptKey);
         var telegram = new FakeChannel(MessageChannel.Telegram, ready: true, _ => SendOutcome.Skipped("у клиента нет Telegram"));
-        var whatsApp = new FakeChannel(MessageChannel.WhatsApp, ready: true, _ => SendOutcome.Skipped("у номера нет WhatsApp"));
         var bot = new FakeChannel(MessageChannel.TelegramBot, ready: true, _ => SendOutcome.Sent);
-        await Dispatcher(telegram, whatsApp, bot).RunOnceAsync(CancellationToken.None);
+        await Dispatcher(telegram, bot).RunOnceAsync(CancellationToken.None);
 
         var request = Assert.Single((await MessagesAsync(booking.Id)).Where(x => x.Kind == OutgoingMessageKind.ContactRequest));
         Assert.Equal(MessageChannel.TelegramBot, request.Channel);
@@ -189,12 +193,12 @@ public sealed class CustomerMessagesTests(AppFactory app)
             Assert.Contains(line, request.Text);
 
         // The bot attaches the customer's receipt to this message (TelegramBotChannel opens it by booking).
-        await Dispatcher(telegram, whatsApp, bot).RunOnceAsync(CancellationToken.None);
+        await Dispatcher(telegram, bot).RunOnceAsync(CancellationToken.None);
         Assert.Contains(bot.Sent, x => x.Kind == OutgoingMessageKind.ContactRequest && x.Booking.ReceiptKey == receiptKey);
         Assert.Equal(OutgoingMessageStatus.Sent, Assert.Single(
             (await MessagesAsync(booking.Id)).Where(x => x.Kind == OutgoingMessageKind.ContactRequest)).Status);
 
-        await Dispatcher(telegram, whatsApp, bot).RunOnceAsync(CancellationToken.None);   // once per booking
+        await Dispatcher(telegram, bot).RunOnceAsync(CancellationToken.None);   // once per booking
         Assert.Single((await MessagesAsync(booking.Id)).Where(x => x.Kind == OutgoingMessageKind.ContactRequest));
     }
 
@@ -203,9 +207,8 @@ public sealed class CustomerMessagesTests(AppFactory app)
     {
         var booking = await ConfirmedBookingAsync();
         var telegram = new FakeChannel(MessageChannel.Telegram, ready: true, _ => SendOutcome.Sent);
-        var whatsApp = new FakeChannel(MessageChannel.WhatsApp, ready: true, _ => SendOutcome.Skipped("у номера нет WhatsApp"));
         var bot = new FakeChannel(MessageChannel.TelegramBot, ready: true, _ => SendOutcome.Sent);
-        await Dispatcher(telegram, whatsApp, bot).RunOnceAsync(CancellationToken.None);
+        await Dispatcher(telegram, bot).RunOnceAsync(CancellationToken.None);
 
         Assert.DoesNotContain(await MessagesAsync(booking.Id), x => x.Kind == OutgoingMessageKind.ContactRequest);
         Assert.Empty(bot.Sent);
@@ -217,6 +220,16 @@ public sealed class CustomerMessagesTests(AppFactory app)
         var booking = await ConfirmedBookingAsync();
         var telegram = new FakeChannel(MessageChannel.Telegram, ready: true, b => b.Id == booking.Id ? SendOutcome.Sent : SendOutcome.Skipped("other"));
         var whatsApp = new FakeChannel(MessageChannel.WhatsApp, ready: false, _ => SendOutcome.Sent);
+        using (var scope = app.Services.CreateScope())   // a WhatsApp copy queued before the 2026-11-03 decision
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.OutgoingMessages.Add(new OutgoingMessage
+            {
+                BookingId = booking.Id, Channel = MessageChannel.WhatsApp, Kind = OutgoingMessageKind.Confirmation,
+                Text = "старое сообщение", NextAttemptAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
         await Dispatcher(telegram, whatsApp).RunOnceAsync(CancellationToken.None);
 
         var messages = await MessagesAsync(booking.Id);

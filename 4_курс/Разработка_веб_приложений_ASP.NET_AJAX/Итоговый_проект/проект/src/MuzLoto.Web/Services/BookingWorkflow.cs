@@ -186,7 +186,8 @@ public sealed class BookingWorkflow(
             });
             // The customer's "your booking is confirmed" messages are queued in the same transaction (outbox).
             var game = await db.Games.AsNoTracking().SingleAsync(x => x.Id == session.GameId, ct);
-            var text = Messaging.ConfirmationMessage.Build(booking, session, game);
+            var hasReceipt = booking.ReceiptKey is { Length: > 0 };
+            var text = Messaging.ConfirmationMessage.Build(booking, session, game, receiptFollows: hasReceipt);
             var queued = await db.OutgoingMessages
                 .Where(x => x.BookingId == booking.Id && x.Kind == OutgoingMessageKind.Confirmation)
                 .Select(x => x.Channel).ToListAsync(ct);
@@ -690,8 +691,12 @@ public sealed class BookingWorkflow(
 
     private const int MaxAttempts = 5;
 
-    /// <summary>Channels that can write to a customer; the staff bot is deliberately excluded.</summary>
-    private static readonly MessageChannel[] CustomerChannels = [MessageChannel.Telegram, MessageChannel.WhatsApp];
+    /// <summary>
+    /// Channels that can write to a customer; the staff bot is deliberately excluded. Customer messages go only to
+    /// Telegram (decision of 2026-11-03): the company does not want copies sent to WhatsApp, so that channel stays
+    /// registered but is never queued for customers.
+    /// </summary>
+    private static readonly MessageChannel[] CustomerChannels = [MessageChannel.Telegram];
 
     /// <summary>
     /// SERIALIZABLE transactions may be aborted by PostgreSQL when they race (40001). Re-running the whole

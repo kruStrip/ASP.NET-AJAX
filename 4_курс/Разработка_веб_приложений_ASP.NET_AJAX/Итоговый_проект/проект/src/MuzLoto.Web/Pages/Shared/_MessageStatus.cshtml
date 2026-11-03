@@ -1,6 +1,7 @@
 @using MuzLoto.Web.Domain
 @model ICollection<OutgoingMessage>
-@* «Ваша игра подтверждена» in Telegram / WhatsApp: what happened to each message. *@
+@* «Ваша игра подтверждена»: what happened to each message. New customer messages are Telegram-only
+   (decision of 2026-11-03), but old bookings may still show their WhatsApp copies here. *@
 @if (Model.Count > 0)
 {
     <p class="message-status">
