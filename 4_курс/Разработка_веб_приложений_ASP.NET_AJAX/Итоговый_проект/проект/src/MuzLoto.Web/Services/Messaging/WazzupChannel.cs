@@ -8,7 +8,7 @@ namespace MuzLoto.Web.Services.Messaging;
 /// <summary>A channel of the Wazzup account as its API reports it (GET /v3/channels).</summary>
 public sealed record WazzupChannelInfo(string ChannelId, string Transport, string? PlainId, string State);
 
-/// <summary>Everything the «Мессенджеры» page shows about one messenger: a status plus the full channel list.</summary>
+/// <summary>Everything the channel knows about its messenger: a status, the channel list and the one we send from.</summary>
 public sealed record WazzupState(string Status, string? Detail, IReadOnlyList<WazzupChannelInfo> Channels, WazzupChannelInfo? Resolved = null)
 {
     public static WazzupState Of(string status, string? detail = null) => new(status, detail, []);
@@ -78,7 +78,7 @@ public sealed class WazzupChannel(IHttpClientFactory httpFactory, IConfiguration
         return state;
     }
 
-    /// <summary>Turns the channel list into the page state: which channel we send from and whether it is active.</summary>
+    /// <summary>Turns the channel list into a state: which channel we send from and whether it is active.</summary>
     private WazzupState Describe((WazzupChannelInfo Channel, bool Several)? match, IReadOnlyList<WazzupChannelInfo> all)
     {
         if (match is not { } found)

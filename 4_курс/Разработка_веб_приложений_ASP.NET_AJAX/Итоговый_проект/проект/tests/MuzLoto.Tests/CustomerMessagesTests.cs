@@ -128,16 +128,11 @@ public sealed class CustomerMessagesTests(AppFactory app)
     }
 
     [Fact]
-    public async Task MessengersPage_IsForAdminsOnly_AndExplainsWhatIsMissing()
+    public async Task MessengersPage_IsRemoved_Entirely()
     {
-        var manager = await app.SignedInAsync(await app.CreateUserAsync("Manager"));
-        Assert.Equal(System.Net.HttpStatusCode.Redirect, (await manager.GetAsync("/messengers")).StatusCode);
+        // The page was retired (decision of 2026-11-03): channels live in the Wazzup cabinet,
+        // message statuses are shown in the «Подтверждённые игры» card.
         var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
-        var html = System.Net.WebUtility.HtmlDecode(await admin.GetStringAsync("/messengers"));
-        Assert.Contains("Каналы Wazzup", html);                    // the messengers now live in the Wazzup account
-        Assert.Contains("WAZZUP_API_KEY", html);                  // not configured in tests: the page says what to add
-        Assert.Contains("не подключён к Wazzup", html);
-        Assert.Contains("<h3>Telegram</h3>", html);                // per-messenger state is always rendered
-        Assert.Contains("<h3>WhatsApp</h3>", html);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, (await admin.GetAsync("/messengers")).StatusCode);
     }
 }
