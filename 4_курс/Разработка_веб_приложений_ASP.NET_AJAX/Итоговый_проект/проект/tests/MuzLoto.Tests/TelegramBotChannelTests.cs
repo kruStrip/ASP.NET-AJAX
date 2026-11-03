@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using MuzLoto.Web.Domain;
 using MuzLoto.Web.Services;
@@ -45,13 +46,25 @@ public sealed class TelegramBotChannelTests
         new ConfigurationBuilder().AddInMemoryCollection(values.ToDictionary(v => v.Key, v => v.Value)).Build();
 
     private static TelegramBotChannel Channel(ScriptedHttp http, IConfiguration config, IReceiptFiles? files = null) =>
-        new(new ScriptedFactory(http), config, files ?? new FakeReceipts(null));
+        new(new ScriptedFactory(http), config, files ?? new FakeReceipts(null), Links(config));
+
+    /// <summary>Signed receipt links as the application builds them, from a throwaway key ring.</summary>
+    private static ReceiptLinks Links(IConfiguration config) => new(
+        DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(Path.GetTempPath(), "opencode", "dp", Guid.NewGuid().ToString("N")))),
+        config);
 
     private static readonly IConfiguration Ready = Config(
         ("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"), ("Telegram:ManagerTopicId", "77"));
 
+    private static readonly IConfiguration Relay = Config(
+        ("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"), ("Telegram:ManagerTopicId", "77"),
+        ("Telegram:ApiBaseUrl", "https://relay.example.workers.dev/"), ("Telegram:RelaySecret", "s3cret"));
+
     private static Booking Booking() => new() { CustomerName = "Вика", Phone = "+79140000000" };
     private static OutgoingMessage Message(string text = "Новая оплата ждёт подтверждения") => new() { Booking = Booking(), Text = text };
+    private static OutgoingMessage ReceiptMessage(string key = "receipts/abc-20261103152308507.jpg", string text = "Номер клиента: +79140000000") =>
+        new() { Booking = new Booking { Id = Guid.NewGuid(), CustomerName = "Вика", Phone = "+79140000000", ReceiptKey = key },
+                Text = text, Kind = OutgoingMessageKind.ReceiptNotification };
     private static OutgoingMessage ContactMessage(string text = "Связаться с клиентом") =>
         new() { Booking = Booking(), Text = text, Kind = OutgoingMessageKind.ContactRequest };
     private static HttpResponseMessage Ok(string json = """{"ok":true}""") =>
@@ -72,7 +85,8 @@ public sealed class TelegramBotChannelTests
         http.Enqueue(Ok());
         var receipts = new FakeReceipts(TempFile(".png", [0x89, 0x50, 0x4E, 0x47, 1, 2, 3]));
 
-        var outcome = await Channel(http, Ready, receipts).SendAsync(Message("Номер клиента: +79140000000"), CancellationToken.None);
+        var outcome = await Channel(http, Ready, receipts)
+            .SendAsync(ReceiptMessage("receipts/abc-20261103152308507.png", "Номер клиента: +79140000000"), CancellationToken.None);
         Assert.Equal(OutgoingMessageStatus.Sent, outcome.Status);
 
         var (request, body) = Assert.Single(http.Seen);
@@ -89,12 +103,13 @@ public sealed class TelegramBotChannelTests
         var pdf = new ScriptedHttp();
         pdf.Enqueue(Ok());
         await Channel(pdf, Ready, new FakeReceipts(TempFile(".pdf", "%PDF-1.4"u8.ToArray()), "application/pdf"))
-            .SendAsync(Message(), CancellationToken.None);
+            .SendAsync(ReceiptMessage("receipts/abc-20261103152308507.pdf"), CancellationToken.None);
         Assert.Contains("sendDocument", pdf.Seen.Single().Request.RequestUri!.ToString());
 
+        // The booking has a receipt key but the file is gone: the manager still gets the text.
         var text = new ScriptedHttp();
         text.Enqueue(Ok());
-        await Channel(text, Ready).SendAsync(Message("текст"), CancellationToken.None);
+        await Channel(text, Ready).SendAsync(ReceiptMessage("receipts/gone-20261103152308507.png", "текст"), CancellationToken.None);
         var (request, body) = text.Seen.Single();
         Assert.EndsWith("/sendMessage", request.RequestUri!.ToString());
         using var json = JsonDocument.Parse(body);
@@ -161,22 +176,76 @@ public sealed class TelegramBotChannelTests
     {
         var http = new ScriptedHttp();
         http.Enqueue(Ok());
-        var relayed = Config(("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"),
-            ("Telegram:ManagerTopicId", "77"), ("Telegram:ApiBaseUrl", "https://relay.example.workers.dev/"),
-            ("Telegram:RelaySecret", "s3cret"));
 
-        var outcome = await Channel(http, relayed).SendAsync(Message("текст"), CancellationToken.None);
+        var outcome = await Channel(http, Relay).SendAsync(Message("текст"), CancellationToken.None);
         Assert.Equal(OutgoingMessageStatus.Sent, outcome.Status);
         var (request, _) = Assert.Single(http.Seen);
         Assert.Equal("https://relay.example.workers.dev/bot123:ABC/sendMessage", request.RequestUri!.ToString());
         Assert.Equal("s3cret", Assert.Single(request.Headers.GetValues("X-Relay-Secret")));
+    }
 
-        var photo = new ScriptedHttp();   // the file upload goes the same way
-        photo.Enqueue(Ok());
-        await Channel(photo, relayed, new FakeReceipts(TempFile(".png", [0x89, 0x50, 0x4E, 0x47, 1])))
-            .SendAsync(Message(), CancellationToken.None);
-        Assert.Equal("https://relay.example.workers.dev/bot123:ABC/sendPhoto",
-            photo.Seen.Single().Request.RequestUri!.ToString());
+    /// <summary>
+    /// The provider's filtering drops any request body over ~10 KB sent to the relay's *.workers.dev host (measured
+    /// on the production server 2026-11-03), so a receipt is never uploaded: the site passes a signed link and the
+    /// relay downloads the file itself. The request must stay tiny.
+    /// </summary>
+    [Fact]
+    public async Task Relay_GetsASmallRequestWithTheSignedReceiptLink()
+    {
+        var http = new ScriptedHttp();
+        http.Enqueue(Ok());
+        var message = ReceiptMessage();
+
+        // No file on disk: through a relay the site does not touch the file at all.
+        var outcome = await Channel(http, Relay).SendAsync(message, CancellationToken.None);
+        Assert.Equal(OutgoingMessageStatus.Sent, outcome.Status);
+
+        var (request, body) = Assert.Single(http.Seen);
+        Assert.Equal("https://relay.example.workers.dev/send-file", request.RequestUri!.ToString());
+        Assert.Equal("s3cret", Assert.Single(request.Headers.GetValues("X-Relay-Secret")));
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("123:ABC", json.RootElement.GetProperty("token").GetString());
+        Assert.Equal("-100123456", json.RootElement.GetProperty("chatId").GetString());
+        Assert.Equal("77", json.RootElement.GetProperty("topicId").GetString());
+        Assert.Equal("abc-20261103152308507.jpg", json.RootElement.GetProperty("fileName").GetString());
+        Assert.Equal("Номер клиента: +79140000000", json.RootElement.GetProperty("caption").GetString());
+        Assert.StartsWith($"https://muzloto.b-o-c-a.ru/receipts/{message.Booking.Id:N}/abc-20261103152308507.jpg?t=",
+            json.RootElement.GetProperty("fileUrl").GetString());
+        Assert.True(body.Length < 2048, $"the relay request must stay small, it is {body.Length} bytes");
+    }
+
+    [Fact]
+    public async Task WithoutAReceipt_EvenThroughARelayTheMessageIsPlainText()
+    {
+        var http = new ScriptedHttp();
+        http.Enqueue(Ok());
+        await Channel(http, Relay).SendAsync(Message("текст"), CancellationToken.None);
+        Assert.EndsWith("/bot123:ABC/sendMessage", http.Seen.Single().Request.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task OldRelayWithoutSendFile_SaysWhatToUpdate()
+    {
+        var http = new ScriptedHttp();
+        http.Enqueue(new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("not found") });
+        var outcome = await Channel(http, Relay).SendAsync(ReceiptMessage(), CancellationToken.None);
+        Assert.Equal(OutgoingMessageStatus.Failed, outcome.Status);
+        Assert.Contains("worker.js", outcome.Error);
+        Assert.DoesNotContain("добавьте его в группу", outcome.Error);
+    }
+
+    [Fact]
+    public async Task RelayFileErrors_AreShownAsTheRelaysReason()
+    {
+        var http = new ScriptedHttp();
+        http.Enqueue(new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("""{"ok":false,"error_code":502,"description":"Релей: сайт ответил 404 на запрос файла."}""",
+                Encoding.UTF8, "application/json")
+        });
+        var outcome = await Channel(http, Relay).SendAsync(ReceiptMessage(), CancellationToken.None);
+        Assert.Equal(OutgoingMessageStatus.Failed, outcome.Status);
+        Assert.Contains("сайт ответил 404", outcome.Error);
     }
 
     [Fact]

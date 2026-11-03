@@ -4,7 +4,7 @@
 import http from "node:http";
 import worker from "./worker.js";
 
-const env = { RELAY_SECRET: "test-secret" };
+const env = { RELAY_SECRET: "test-secret", FILE_HOSTS: "receipts.test" };
 const base = "http://relay.local";
 let failures = 0;
 
@@ -26,8 +26,15 @@ const stub = http.createServer((req, res) => {
 await new Promise((resolve) => stub.listen(0, "127.0.0.1", resolve));
 const port = stub.address().port;
 const realFetch = globalThis.fetch;
-globalThis.fetch = (input, init) =>
-  realFetch(String(input).replace("https://api.telegram.org", `http://127.0.0.1:${port}`), init);
+const fileStub = { bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]), type: "image/png" };
+globalThis.fetch = (input, init) => {
+  const url = String(input);
+  // The relay downloads the receipt from the site; here it is a stub, the site itself is not touched.
+  if (url.startsWith("https://receipts.test/")) {
+    return Promise.resolve(new Response(fileStub.bytes, { headers: { "content-type": fileStub.type } }));
+  }
+  return realFetch(url.replace("https://api.telegram.org", `http://127.0.0.1:${port}`), init);
+};
 
 // 1. No secret -> 403, Telegram is not called.
 let res = await worker.fetch(new Request(base + "/bot123:ABC/sendMessage", { method: "POST" }), env);
@@ -96,6 +103,59 @@ check("caption and file are inside the upload",
   `${upload.body.length} bytes`);
 check("the relay secret is not required by Telegram", upload.headers["x-relay-secret"] === undefined,
   String(upload.headers["x-relay-secret"]));
+
+// 7. /send-file: the site sends a small JSON with the signed receipt link, the relay downloads the file itself
+// (the provider drops any request body over ~10 KB to *.workers.dev, so a receipt must never be uploaded by the site)
+// and uploads it to Telegram.
+const sendFile = (body) =>
+  worker.fetch(
+    new Request(base + "/send-file", {
+      method: "POST",
+      headers: { "x-relay-secret": "test-secret", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    env,
+  );
+
+res = await sendFile({
+  token: "123:ABC",
+  chatId: "-100123",
+  topicId: "2",
+  caption: "Номер клиента: +79140000000",
+  fileName: "abc-receipt.png",
+  fileUrl: "https://receipts.test/receipts/abc.png?t=signed",
+});
+text = await res.text();
+check("send-file reaches Telegram", res.status === 401 && text.includes("Unauthorized"), `${res.status} ${text.slice(0, 60)}`);
+const fileCall = seen.at(-1);
+const fileBody = fileCall.body.toString("latin1");
+check("send-file uploads a photo to sendPhoto", fileCall.url === "/bot123:ABC/sendPhoto", fileCall.url);
+check("send-file keeps the topic", fileBody.includes('name="message_thread_id"') && fileBody.includes('name="chat_id"'),
+  `${fileCall.body.length} bytes`);
+check("send-file keeps the caption and the file name",
+  fileCall.body.includes(Buffer.from("Номер клиента: +79140000000")) && fileBody.includes('filename="abc-receipt.png"'),
+  `${fileCall.body.length} bytes`);
+check("send-file downloads exactly the receipt bytes",
+  fileCall.body.includes(fileStub.bytes), `${fileCall.body.length} bytes`);
+
+// A PDF receipt goes as a document, not as a photo.
+fileStub.bytes = Buffer.from("%PDF-1.4");
+fileStub.type = "application/pdf";
+res = await sendFile({ token: "123:ABC", chatId: "-100123", fileName: "abc.pdf", fileUrl: "https://receipts.test/abc.pdf" });
+await res.text();
+check("send-file sends a PDF as a document", seen.at(-1).url === "/bot123:ABC/sendDocument", seen.at(-1).url);
+
+// Another host than the site's is refused: the relay must not fetch arbitrary URLs.
+const before = seen.length;
+res = await sendFile({ token: "123:ABC", chatId: "-100123", fileUrl: "https://evil.example/receipt.png" });
+text = await res.text();
+check("send-file refuses a foreign host", res.status === 403 && text.includes("receipts.test"), `${res.status} ${text.slice(0, 80)}`);
+check("nothing reached Telegram for a foreign host", seen.length === before, `${seen.length - before} request(s)`);
+
+// Missing fields are a clear 400, not a Telegram call.
+res = await sendFile({ chatId: "-100123", fileUrl: "https://receipts.test/abc.png" });
+text = await res.text();
+check("send-file asks for the missing fields", res.status === 400 && text.includes("token"), `${res.status} ${text.slice(0, 80)}`);
 
 stub.close();
 console.log(failures === 0 ? "\nall relay checks passed" : `\n${failures} relay check(s) failed`);

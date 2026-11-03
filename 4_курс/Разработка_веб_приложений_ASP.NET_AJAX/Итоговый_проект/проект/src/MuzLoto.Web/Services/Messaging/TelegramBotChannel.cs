@@ -16,8 +16,12 @@ namespace MuzLoto.Web.Services.Messaging;
 /// When the server cannot reach api.telegram.org (Telegram is blocked for the hosting), the calls go through a small
 /// relay that forwards only the bot methods we use: Telegram:ApiBaseUrl points at it and Telegram:RelaySecret is the
 /// shared header it requires (see deploy/cloudflare-worker — the decision of 2026-11-03).
+/// Through a relay the file itself is not uploaded: the provider's filtering drops request bodies over ~10 KB to the
+/// relay's hostname (measured 2026-11-03), so the site sends a small JSON with the receipt's signed link and the relay
+/// downloads the file from our site and hands it to Telegram. Direct calls (no relay) still upload the file.
 /// </summary>
-public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfiguration config, IReceiptFiles files)
+public sealed class TelegramBotChannel(
+    IHttpClientFactory httpFactory, IConfiguration config, IReceiptFiles files, ReceiptLinks links)
     : IMessengerChannel
 {
     public MessageChannel Channel => MessageChannel.TelegramBot;
@@ -27,6 +31,9 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
     private string? TopicId => config["Telegram:ManagerTopicId"]?.Trim();
     private string? ContactTopicId => config["Telegram:ContactTopicId"]?.Trim();
     private string? RelaySecret => config["Telegram:RelaySecret"]?.Trim();
+
+    /// <summary>The calls go through a relay (Telegram is unreachable from this server) rather than to api.telegram.org.</summary>
+    private bool ThroughRelay => config["Telegram:ApiBaseUrl"]?.Trim() is { Length: > 0 };
 
     /// <summary>api.telegram.org itself, or the relay through which this server can reach it.</summary>
     private string ApiBaseUrl =>
@@ -60,14 +67,23 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
             return SendOutcome.Failed("Не задан TELEGRAM_CONTACT_TOPIC_ID — уведомление «Связаться с клиентом» не отправляется.");
         try
         {
-            using var response = files.OpenReceipt(message.Booking) is { } receipt
-                ? await SendFileAsync(token, chatId, topic, receipt, message.Text, ct)
-                : await SendTextAsync(token, chatId, topic, message.Text, ct);
+            using var response = await SendCoreAsync(token, chatId, topic, message, ct);
             if (response.StatusCode == HttpStatusCode.OK) return SendOutcome.Sent;
             return await ExplainAsync(response, ct);
         }
         catch (HttpRequestException) { return SendOutcome.Failed("Telegram недоступен, повторим позже."); }
         catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return SendOutcome.Failed("Telegram не ответил за 30 секунд."); }
+    }
+
+    /// <summary>Text when there is nothing to attach, otherwise the receipt — uploaded or, through a relay, sent by link.</summary>
+    private Task<HttpResponseMessage> SendCoreAsync(string token, string chatId, string? topic,
+        OutgoingMessage message, CancellationToken ct)
+    {
+        if (message.Booking.ReceiptKey is not { Length: > 0 } key) return SendTextAsync(token, chatId, topic, message.Text, ct);
+        if (ThroughRelay) return SendFileByLinkAsync(token, chatId, topic, message, key, ct);
+        return files.OpenReceipt(message.Booking) is { } file
+            ? SendFileAsync(token, chatId, topic, file, message.Text, ct)
+            : SendTextAsync(token, chatId, topic, message.Text, ct);
     }
 
     private Task<HttpResponseMessage> SendTextAsync(string token, string chatId, string? topic, string text, CancellationToken ct)
@@ -76,16 +92,36 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
         return Http.PostAsJsonAsync($"{ApiBaseUrl}/bot{token}/sendMessage", body, ct);
     }
 
+    /// <summary>
+    /// The relay downloads the receipt from the signed link and uploads it to Telegram. The body stays a few hundred
+    /// bytes on purpose: the request the site sends must fit under the size the provider lets through.
+    /// </summary>
+    private Task<HttpResponseMessage> SendFileByLinkAsync(string token, string chatId, string? topic,
+        OutgoingMessage message, string receiptKey, CancellationToken ct)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["token"] = token,
+            ["chatId"] = chatId,
+            ["caption"] = Caption(message.Text),
+            ["fileName"] = Path.GetFileName(receiptKey),
+            ["fileUrl"] = links.Create(message.Booking.Id, receiptKey)
+        };
+        if (topic is { Length: > 0 }) body["topicId"] = topic;
+        return Http.PostAsJsonAsync($"{ApiBaseUrl}/send-file", body, ct);
+    }
+
+    /// <summary>Telegram rejects captions longer than 1024 characters; the text is what a manager forwards, keep the start.</summary>
+    private static string Caption(string caption) => caption.Length > 1024 ? caption[..1023] + "…" : caption;
+
     private async Task<HttpResponseMessage> SendFileAsync(string token, string chatId, string? topic,
         (string Path, string ContentType) file, string caption, CancellationToken ct)
     {
         var isPhoto = file.ContentType != "application/pdf";
-        // Telegram rejects captions longer than 1024 characters; the text is what a manager forwards, keep the start.
-        if (caption.Length > 1024) caption = caption[..1023] + "…";
         using var form = new MultipartFormDataContent();
         AddField(form, "chat_id", chatId);
         if (topic is { Length: > 0 }) AddField(form, "message_thread_id", topic);
-        AddField(form, "caption", caption);
+        AddField(form, "caption", Caption(caption));
         var content = new StreamContent(File.OpenRead(file.Path));
         content.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType);
         form.Add(content, isPhoto ? "photo" : "document", Path.GetFileName(file.Path));
@@ -126,6 +162,11 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
                 SendOutcome.Failed("Релей Telegram отклонил запрос — проверьте TELEGRAM_RELAY_SECRET."),
             HttpStatusCode.Forbidden when relayRefused =>
                 SendOutcome.Failed("Релей Telegram отклонил запрос — проверьте TELEGRAM_RELAY_SECRET."),
+            // An older relay without /send-file answers a plain 404: the site must say what to update.
+            HttpStatusCode.NotFound when relayRefused =>
+                SendOutcome.Failed("Релей Telegram не умеет отправлять чек по ссылке — обновите deploy/cloudflare-worker/worker.js."),
+            HttpStatusCode.BadGateway when ThroughRelay && description is not null =>
+                SendOutcome.Failed(why, TimeSpan.FromMinutes(2)),
             HttpStatusCode.Unauthorized => SendOutcome.Failed("Telegram отклонил токен бота — проверьте TELEGRAM_BOT_TOKEN."),
             HttpStatusCode.Forbidden => SendOutcome.Failed("Бот не может писать в группу — добавьте его в группу и проверьте тему."),
             HttpStatusCode.BadRequest => SendOutcome.Skipped("Telegram не принял сообщение: " + why + "."),

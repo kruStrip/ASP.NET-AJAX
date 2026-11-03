@@ -185,11 +185,13 @@ builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.IMessengerChannel>(
 builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp =>
     new MuzLoto.Web.Services.Messaging.WazzupChannel(
         sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(), builder.Configuration, MessageChannel.WhatsApp));
-// The bot reads the receipt from local storage, so it needs the scoped file service.
+// The bot reads the receipt from local storage (or, through a relay, passes its signed link), so it needs the scoped
+// file service and the link factory.
 builder.Services.AddScoped<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp =>
     new MuzLoto.Web.Services.Messaging.TelegramBotChannel(
         sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(), builder.Configuration,
-        sp.GetRequiredService<MuzLoto.Web.Services.CoverImages>()));
+        sp.GetRequiredService<MuzLoto.Web.Services.CoverImages>(),
+        sp.GetRequiredService<MuzLoto.Web.Services.ReceiptLinks>()));
 builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.MessageDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.MessageDispatcher>());
 builder.Services.AddSingleton<PaymentLinks>();
