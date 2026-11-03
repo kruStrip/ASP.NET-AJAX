@@ -134,8 +134,10 @@ public sealed class CustomerMessagesTests(AppFactory app)
         Assert.Equal(System.Net.HttpStatusCode.Redirect, (await manager.GetAsync("/messengers")).StatusCode);
         var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
         var html = System.Net.WebUtility.HtmlDecode(await admin.GetStringAsync("/messengers"));
-        Assert.Contains("<h2>Telegram</h2>", html);
-        Assert.Contains("TELEGRAM_API_ID", html);                 // not configured in tests: the page says what to add
-        Assert.Contains("не настроен на сервере", html);          // WhatsApp gateway
+        Assert.Contains("Каналы Wazzup", html);                    // the messengers now live in the Wazzup account
+        Assert.Contains("WAZZUP_API_KEY", html);                  // not configured in tests: the page says what to add
+        Assert.Contains("не подключён к Wazzup", html);
+        Assert.Contains("<h3>Telegram</h3>", html);                // per-messenger state is always rendered
+        Assert.Contains("<h3>WhatsApp</h3>", html);
     }
 }

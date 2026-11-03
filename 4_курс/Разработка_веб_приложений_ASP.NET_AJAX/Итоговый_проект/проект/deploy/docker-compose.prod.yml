@@ -36,18 +36,12 @@ services:
       BootstrapAdmin__Password: ${MUZLOTO_ADMIN_PASSWORD:?set in .env}
       ForwardedHeaders__Enabled: "true"
       Site__PublicUrl: https://muzloto.b-o-c-a.ru
-      # Customer messages after a confirmed payment. Empty values = the messenger is simply not connected yet.
-      Messaging__DataPath: /data/messengers
-      Telegram__ApiId: ${TELEGRAM_API_ID:-}
-      Telegram__ApiHash: ${TELEGRAM_API_HASH:-}
-      Waha__Url: http://waha:3000
-      Waha__ApiKey: ${WAHA_API_KEY:-}
-      # WhatsApp (and, if TELEGRAM_VIA_RELAY=true, Telegram) are blocked from this server's network: the app runs a
-      # small CONNECT proxy on :3128 that tunnels through the Cloudflare Worker deploy/cloudflare/wa-relay.js.
-      Relay__Url: ${WA_RELAY_URL:-}
-      Relay__Token: ${WA_RELAY_TOKEN:-}
-      Relay__ProxyPassword: ${WAHA_API_KEY:-}
-      Telegram__UseRelay: ${TELEGRAM_VIA_RELAY:-false}
+      # Customer messages after a confirmed payment go through the Wazzup cloud service; the company connects
+      # its WhatsApp number and Telegram account in the Wazzup web interface. Empty API key = not connected yet.
+      # Channel ids are optional: without them the only channel of the matching type in Wazzup is used.
+      Wazzup__ApiKey: ${WAZZUP_API_KEY:-}
+      Wazzup__WhatsAppChannelId: ${WAZZUP_WHATSAPP_CHANNEL_ID:-}
+      Wazzup__TelegramChannelId: ${WAZZUP_TELEGRAM_CHANNEL_ID:-}
     volumes:
       - appdata:/data
     mem_limit: 320m
@@ -56,30 +50,9 @@ services:
       proxy:
         aliases: [muzloto-app]
 
-  # WhatsApp gateway for the separate WhatsApp number (linked once by a QR code on «Мессенджеры»).
-  # Only the app can reach it: no published ports, internal network only.
-  waha:
-    image: devlikeapro/waha:noweb            # browserless image: small and light
-    restart: unless-stopped
-    environment:
-      WAHA_API_KEY: ${WAHA_API_KEY:-}
-      WHATSAPP_DEFAULT_ENGINE: NOWEB
-      WAHA_DASHBOARD_ENABLED: "false"
-      WHATSAPP_SWAGGER_ENABLED: "false"
-      WAHA_PRINT_QR: "false"
-      # All WhatsApp traffic goes through the app's relay proxy (see Relay__* above).
-      WHATSAPP_PROXY_SERVER: app:3128
-      WHATSAPP_PROXY_SERVER_USERNAME: waha
-      WHATSAPP_PROXY_SERVER_PASSWORD: ${WAHA_API_KEY:-}
-    volumes:
-      - wahadata:/app/.sessions
-    mem_limit: 256m
-    networks: [internal]
-
 volumes:
   pgdata:
   appdata:
-  wahadata:
 
 networks:
   internal: {}

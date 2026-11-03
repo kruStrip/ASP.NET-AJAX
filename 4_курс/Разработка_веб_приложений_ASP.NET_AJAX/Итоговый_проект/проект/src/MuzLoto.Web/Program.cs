@@ -168,18 +168,21 @@ builder.Services.AddScoped<CoverImages>();
 builder.Services.AddScoped<FormDesignerWebhook>();
 builder.Services.AddScoped<PublicSchedule>();
 builder.Services.AddScoped<ClientAccounts>();
-// Messages to customers after a confirmed payment: Telegram (personal account) and WhatsApp (WAHA gateway).
-builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.TelegramChannel>();
-builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.TelegramChannel>());
-builder.Services.AddHttpClient<MuzLoto.Web.Services.Messaging.WhatsAppChannel>(http =>
+// Messages to customers after a confirmed payment go through the Wazzup cloud service: the company connects
+// its WhatsApp number and Telegram account in the Wazzup interface, the site only holds the Wazzup API key.
+builder.Services.AddHttpClient("Wazzup", http =>
 {
-    if (builder.Configuration["Waha:Url"] is { Length: > 0 } url) http.BaseAddress = new Uri(url.TrimEnd('/') + "/");
-    http.DefaultRequestHeaders.Add("X-Api-Key", builder.Configuration["Waha:ApiKey"] ?? "");
+    http.BaseAddress = new Uri("https://api.wazzup24.com/");
+    http.DefaultRequestHeaders.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", builder.Configuration["Wazzup:ApiKey"]);
     http.Timeout = TimeSpan.FromSeconds(30);
 });
-builder.Services.AddTransient<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.WhatsAppChannel>());
-builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.RelayTunnel>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.RelayTunnel>());
+builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp =>
+    new MuzLoto.Web.Services.Messaging.WazzupChannel(
+        sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(), builder.Configuration, MessageChannel.Telegram));
+builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp =>
+    new MuzLoto.Web.Services.Messaging.WazzupChannel(
+        sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(), builder.Configuration, MessageChannel.WhatsApp));
 builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.MessageDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.MessageDispatcher>());
 builder.Services.AddSingleton<PaymentLinks>();

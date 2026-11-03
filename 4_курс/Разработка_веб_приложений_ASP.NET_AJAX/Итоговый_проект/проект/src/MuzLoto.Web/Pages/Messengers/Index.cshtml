@@ -1,68 +1,51 @@
 @page "/messengers"
 @model MuzLoto.Web.Pages.Messengers.IndexModel
 @using MuzLoto.Web.Domain
-@{ ViewData["Title"] = "Мессенджеры"; var tg = Model.Telegram; }
+@{
+    ViewData["Title"] = "Мессенджеры";
+    var states = new[] { ("Telegram", Model.TelegramState), ("WhatsApp", Model.WhatsAppState) };
+}
 <div class="page-heading"><div><div class="eyebrow">Управление</div><h1>Мессенджеры</h1>
 <p class="muted">Когда оплата подтверждена, клиенту уходит сообщение «Ваша игра подтверждена» в Telegram и WhatsApp.
-Сообщения отправляются по очереди с паузой, чтобы мессенджеры не сочли это рассылкой.</p></div></div>
+Отправляет сервис Wazzup: аккаунты подключаются в его кабинете, сайт лишь передаёт ему текст. Сообщения уходят по очереди с паузой.</p></div></div>
 
 <section class="panel">
-    <h2>Telegram</h2>
-    @if (!tg.IsConfigured)
+    <h2>Каналы Wazzup</h2>
+    @if (!Model.Configured)
     {
-        <p>Не настроен. На сервере в <code>.env</code> нужны <code>TELEGRAM_API_ID</code> и <code>TELEGRAM_API_HASH</code> — ключи приложения с my.telegram.org.</p>
+        <p class="alert error">Сайт не подключён к Wazzup: на сервере в <code>.env</code> не задан <code>WAZZUP_API_KEY</code>.</p>
     }
-    else if (tg.WaitingForScan)
-    {
-        <p>Откройте Telegram на телефоне, с аккаунта которого будут уходить сообщения: <b>Настройки → Устройства → Подключить устройство</b>, и наведите камеру на код.
-        Страница обновится сама, когда аккаунт подключится.</p>
-        @if (tg.QrUrl is not null) { <img class="pay-qr" src="@Url.Page(null, "TelegramQr")&t=@DateTime.UtcNow.Ticks" alt="QR-код для подключения Telegram" data-refresh-seconds="10" /> }
-        else { <p class="muted" data-refresh-seconds="3">Готовим QR-код…</p> }
-    }
-    else if (Model.TelegramReady)
-    {
-        <p>Подключён: <b>@tg.AccountName</b>. Сообщения уходят с этого аккаунта.</p>
-        <form method="post" asp-page-handler="TelegramLogout" data-confirm="Отключить Telegram? Новые сообщения будут ждать повторного подключения.">
-            <button type="submit" class="button secondary">Отключить</button></form>
-    }
-    else
-    {
-        @if (tg.LoginError is not null) { <p class="alert error">@tg.LoginError</p> }
-        <form method="post" asp-page-handler="TelegramQr" class="slot-form">
-            <label for="tg-password">Пароль двухэтапной проверки Telegram — только если он включён на этом аккаунте</label>
-            <input id="tg-password" name="password" type="password" autocomplete="off" />
-            <div><button type="submit" class="button">Показать QR-код</button></div>
-        </form>
-    }
-</section>
+    <p>Подключение — один раз, в кабинете <a href="https://app.wazzup24.ru/" rel="noopener noreferrer" target="_blank">app.wazzup24.ru</a>:</p>
+    <ol>
+        <li>Зарегистрируйтесь и подключите каналы: номер <b>WhatsApp</b> и аккаунт <b>Telegram</b> (для Telegram лучше именно аккаунт, не бота — бот не может писать клиентам первым). QR-коды сканируют там же.</li>
+        <li>Раздел «Интеграция с CRM» → <b>API</b> → «Подключить» → скопируйте ключ API.</li>
+        <li>Положите ключ на сервер в <code>.env</code> как <code>WAZZUP_API_KEY</code> и перезапустите: <code>docker compose up -d</code>.</li>
+    </ol>
+    <p class="muted">Необязательно: если в Wazzup несколько каналов одного типа, закрепите нужный в <code>WAZZUP_WHATSAPP_CHANNEL_ID</code> / <code>WAZZUP_TELEGRAM_CHANNEL_ID</code> (ID видны ниже).</p>
 
-<section class="panel">
-    <h2>WhatsApp — отдельный номер</h2>
-    <p>Состояние: <b>@IndexModel.WhatsAppText(Model.WhatsApp.Status)</b>@if (Model.WhatsApp.Account is not null) { <span> — @Model.WhatsApp.Account</span> }</p>
-    @if (Model.WhatsApp.Status == "STARTING") { <p class="muted" data-refresh-seconds="3">Готовим QR-код…</p> }
-    @if (Model.WhatsApp.Status == "SCAN_QR_CODE")
+    @foreach (var (name, state) in states)
     {
-        <p>Откройте WhatsApp на телефоне с этим номером → «Связанные устройства» → «Привязка устройства» и отсканируйте код. Страница обновится, когда номер подключится.</p>
-        <img class="pay-qr" src="@Url.Page(null, "WhatsAppQr")&t=@DateTime.UtcNow.Ticks" alt="QR-код для подключения WhatsApp" data-refresh-seconds="20" />
+        <h3>@name</h3>
+        <p>Состояние: <b>@IndexModel.StateText(state.Status)</b>@if (state.Detail is { } d) { <span> — @d</span> }</p>
     }
-    @if (Model.WhatsApp.Status is "NONE" or "STOPPED" or "FAILED")
+
+    @if (Model.TelegramState.Channels.Count > 0 || Model.WhatsAppState.Channels.Count > 0)
     {
-        <form method="post" asp-page-handler="WhatsAppStart"><button type="submit" class="button">Показать QR-код</button></form>
-    }
-    else if (Model.WhatsApp.Status is "STARTING" or "SCAN_QR_CODE")
-    {
-        @* A start that hangs (or a code nobody scanned) can always be begun again. *@
-        <form method="post" asp-page-handler="WhatsAppStart"><button type="submit" class="button secondary">Перезапустить</button></form>
-    }
-    @if (Model.RelayConfigured)
-    {
-        <form method="post" asp-page-handler="RelayTest" class="inline-form"><button type="submit" class="small-button">Проверить туннель через Cloudflare</button>
-        <span class="muted">займёт до минуты</span></form>
-    }
-    @if (Model.WhatsApp.Status == "WORKING")
-    {
-        <form method="post" asp-page-handler="WhatsAppLogout" data-confirm="Отключить WhatsApp? Новые сообщения будут ждать повторного подключения.">
-            <button type="submit" class="button secondary">Отключить</button></form>
+        var channels = Model.TelegramState.Channels.Count > 0 ? Model.TelegramState.Channels : Model.WhatsAppState.Channels;
+        <div class="table-wrap"><table class="table">
+            <thead><tr><th>Канал</th><th>Номер / аккаунт</th><th>Состояние</th><th>ID</th></tr></thead>
+            <tbody>
+            @foreach (var c in channels)
+            {
+                <tr>
+                    <td>@IndexModel.TransportText(c.Transport)</td>
+                    <td>@(c.PlainId ?? "—")</td>
+                    <td>@IndexModel.StateText(c.State)</td>
+                    <td><code>@c.ChannelId</code></td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
     }
 </section>
 
