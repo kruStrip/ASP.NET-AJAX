@@ -13,6 +13,9 @@ namespace MuzLoto.Web.Services.Messaging;
 /// by the company; the site stores only its token and the chat/topic ids (Telegram:BotToken, Telegram:ManagerChatId,
 /// Telegram:ManagerTopicId, Telegram:ContactTopicId — see docs/DEPLOY.md).
 /// The receipt file is uploaded from the local storage, so it is never exposed by a public link.
+/// When the server cannot reach api.telegram.org (Telegram is blocked for the hosting), the calls go through a small
+/// relay that forwards only the bot methods we use: Telegram:ApiBaseUrl points at it and Telegram:RelaySecret is the
+/// shared header it requires (see deploy/cloudflare-worker — the decision of 2026-11-03).
 /// </summary>
 public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfiguration config, IReceiptFiles files)
     : IMessengerChannel
@@ -23,7 +26,22 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
     private string? ChatId => config["Telegram:ManagerChatId"]?.Trim();
     private string? TopicId => config["Telegram:ManagerTopicId"]?.Trim();
     private string? ContactTopicId => config["Telegram:ContactTopicId"]?.Trim();
-    private HttpClient Http => httpFactory.CreateClient("TelegramBot");
+    private string? RelaySecret => config["Telegram:RelaySecret"]?.Trim();
+
+    /// <summary>api.telegram.org itself, or the relay through which this server can reach it.</summary>
+    private string ApiBaseUrl =>
+        (config["Telegram:ApiBaseUrl"]?.Trim() is { Length: > 0 } url ? url : "https://api.telegram.org").TrimEnd('/');
+
+    private HttpClient Http
+    {
+        get
+        {
+            var http = httpFactory.CreateClient("TelegramBot");
+            // The relay refuses calls without the shared secret; Telegram itself ignores an extra header.
+            if (RelaySecret is { Length: > 0 } secret) http.DefaultRequestHeaders.TryAddWithoutValidation("X-Relay-Secret", secret);
+            return http;
+        }
+    }
 
     /// <summary>«Подтвердить игру» for receipts, «Связаться с клиентом» when the customer got nothing.</summary>
     private string? TopicFor(OutgoingMessage message) =>
@@ -55,7 +73,7 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
     private Task<HttpResponseMessage> SendTextAsync(string token, string chatId, string? topic, string text, CancellationToken ct)
     {
         object body = WithTopic(new Dictionary<string, object?> { ["chat_id"] = chatId, ["text"] = text }, topic);
-        return Http.PostAsJsonAsync($"https://api.telegram.org/bot{token}/sendMessage", body, ct);
+        return Http.PostAsJsonAsync($"{ApiBaseUrl}/bot{token}/sendMessage", body, ct);
     }
 
     private async Task<HttpResponseMessage> SendFileAsync(string token, string chatId, string? topic,
@@ -73,7 +91,7 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
         form.Add(content, isPhoto ? "photo" : "document", Path.GetFileName(file.Path));
         var method = isPhoto ? "sendPhoto" : "sendDocument";
         // Await here: the form and the file stream must stay alive until the upload has been sent.
-        return await Http.PostAsync($"https://api.telegram.org/bot{token}/{method}", form, ct);
+        return await Http.PostAsync($"{ApiBaseUrl}/bot{token}/{method}", form, ct);
     }
 
     private static object WithTopic(Dictionary<string, object?> body, string? topic)
@@ -87,7 +105,7 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
         form.Add(new StringContent(value), name);
 
     /// <summary>Turns Telegram's «ok»: false answer into a reason staff can act on.</summary>
-    private static async Task<SendOutcome> ExplainAsync(HttpResponseMessage response, CancellationToken ct)
+    private async Task<SendOutcome> ExplainAsync(HttpResponseMessage response, CancellationToken ct)
     {
         string? description = null;
         int? retryAfter = null;
@@ -100,8 +118,14 @@ public sealed class TelegramBotChannel(IHttpClientFactory httpFactory, IConfigur
         }
         catch (JsonException) { }
         var why = description ?? ("HTTP " + (int)response.StatusCode);
+        // A relay in front of Telegram answers with its own 401/403 and no Bot API JSON: say which secret to check.
+        var relayRefused = description is null && RelaySecret is { Length: > 0 };
         return response.StatusCode switch
         {
+            HttpStatusCode.Unauthorized when relayRefused =>
+                SendOutcome.Failed("Релей Telegram отклонил запрос — проверьте TELEGRAM_RELAY_SECRET."),
+            HttpStatusCode.Forbidden when relayRefused =>
+                SendOutcome.Failed("Релей Telegram отклонил запрос — проверьте TELEGRAM_RELAY_SECRET."),
             HttpStatusCode.Unauthorized => SendOutcome.Failed("Telegram отклонил токен бота — проверьте TELEGRAM_BOT_TOKEN."),
             HttpStatusCode.Forbidden => SendOutcome.Failed("Бот не может писать в группу — добавьте его в группу и проверьте тему."),
             HttpStatusCode.BadRequest => SendOutcome.Skipped("Telegram не принял сообщение: " + why + "."),

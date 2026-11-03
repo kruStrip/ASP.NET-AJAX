@@ -27,19 +27,20 @@ public sealed class CustomerMessagesTests(AppFactory app)
         }
     }
 
+    private static GameSession Session() => new()
+    {
+        Game = new Game { Title = "Квиз Сумерки " + Guid.NewGuid().ToString("N")[..4] },
+        StartsAt = new DateTimeOffset(2031, 11, 5, 10, 0, 0, TimeSpan.Zero), TimeZoneId = ScheduleTime.DefaultTimeZone,
+        Venue = "Киса Бар, Светланская 21", DurationMinutes = 120, AgeLimit = 18, TicketPrice = 700m, Capacity = 40
+    };
+
     private async Task<Booking> ConfirmedBookingAsync(string? telegram = "@team_msg", string? receiptKey = null)
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var session = new GameSession
-        {
-            Game = new Game { Title = "Квиз Сумерки " + Guid.NewGuid().ToString("N")[..4] },
-            StartsAt = new DateTimeOffset(2031, 11, 5, 10, 0, 0, TimeSpan.Zero), TimeZoneId = ScheduleTime.DefaultTimeZone,
-            Venue = "Киса Бар, Светланская 21", DurationMinutes = 120, AgeLimit = 18, TicketPrice = 700m, Capacity = 40
-        };
         var booking = new Booking
         {
-            GameSession = session, TeamName = "МЯУ " + Guid.NewGuid().ToString("N")[..4], CustomerName = "Вика",
+            GameSession = Session(), TeamName = "МЯУ " + Guid.NewGuid().ToString("N")[..4], CustomerName = "Вика",
             Phone = "+79140000000", Telegram = telegram, Quantity = 3, TicketPriceSnapshot = 700m,
             ReceiptKey = receiptKey
         };
@@ -47,6 +48,22 @@ public sealed class CustomerMessagesTests(AppFactory app)
         await db.SaveChangesAsync();
         var admin = await app.CreateUserAsync("Admin");
         await scope.ServiceProvider.GetRequiredService<BookingWorkflow>().ConfirmAsync(booking.Id, admin.Id);
+        return booking;
+    }
+
+    /// <summary>A request from the site form: unpaid, with a receipt already uploaded.</summary>
+    private async Task<Booking> PendingBookingWithReceiptAsync(string receiptKey)
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var booking = new Booking
+        {
+            GameSession = Session(), TeamName = "МЯУ " + Guid.NewGuid().ToString("N")[..4], CustomerName = "Вика",
+            Phone = "+79140000000", Telegram = "@team_msg", Quantity = 3, TicketPriceSnapshot = 700m,
+            ReceiptKey = receiptKey
+        };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
         return booking;
     }
 
@@ -106,6 +123,49 @@ public sealed class CustomerMessagesTests(AppFactory app)
         Assert.All(messages.Where(x => x.Kind == OutgoingMessageKind.Confirmation),
             m => Assert.True(m.CreatedAt < copies.Min(c => c.CreatedAt)));
         Assert.DoesNotContain(messages, x => x.Channel == MessageChannel.TelegramBot);
+    }
+
+    /// <summary>
+    /// A customer uploads a receipt and staff confirm the payment before the bot has managed to send its
+    /// notification (a slow or blocked Telegram call). The receipt notification must stay queued: the group topic
+    /// «Подтвердить игру» still has to get it. Only instructions to pay are dropped by a confirmation.
+    /// </summary>
+    [Fact]
+    public async Task ReceiptNotification_SurvivesAConfirmationThatComesBeforeTheBotSentIt()
+    {
+        var receiptKey = $"receipts/{Guid.NewGuid():N}-20261103120000000.png";
+        var booking = await PendingBookingWithReceiptAsync(receiptKey);
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.OutgoingMessages.Add(new OutgoingMessage
+            {
+                BookingId = booking.Id, Channel = MessageChannel.TelegramBot,
+                Kind = OutgoingMessageKind.PaymentDetails, Text = "Реквизиты", NextAttemptAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+            await scope.ServiceProvider.GetRequiredService<BookingWorkflow>().QueueReceiptNotificationAsync(booking.Id);
+        }
+        // The bot is not sending yet: both messages are still pending when the payment is confirmed.
+        var admin = await app.CreateUserAsync("Admin");
+        using (var scope = app.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<BookingWorkflow>().ConfirmAsync(booking.Id, admin.Id);
+
+        var messages = await MessagesAsync(booking.Id);
+        var notification = Assert.Single(messages, x => x.Kind == OutgoingMessageKind.ReceiptNotification);
+        Assert.Equal(OutgoingMessageStatus.Pending, notification.Status);
+        Assert.StartsWith("Новая оплата ждёт подтверждения", notification.Text);
+        Assert.Contains($"/bookings/pending#booking-{booking.Id:N}", notification.Text);
+        Assert.Equal(MessageChannel.TelegramBot, notification.Channel);
+        // The payment instructions are gone: the amount is already paid.
+        var instructions = Assert.Single(messages, x => x.Kind == OutgoingMessageKind.PaymentDetails);
+        Assert.Equal(OutgoingMessageStatus.Skipped, instructions.Status);
+
+        var bot = new FakeChannel(MessageChannel.TelegramBot, ready: true, _ => SendOutcome.Sent);
+        await Dispatcher(bot).RunOnceAsync(CancellationToken.None);
+        Assert.Contains(bot.Sent, x => x.Kind == OutgoingMessageKind.ReceiptNotification && x.Booking.ReceiptKey == receiptKey);
+        Assert.Equal(OutgoingMessageStatus.Sent, Assert.Single(
+            await MessagesAsync(booking.Id), x => x.Kind == OutgoingMessageKind.ReceiptNotification).Status);
     }
 
     [Fact]

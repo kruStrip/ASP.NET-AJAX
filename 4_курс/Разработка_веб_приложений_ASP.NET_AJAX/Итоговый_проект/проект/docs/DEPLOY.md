@@ -64,6 +64,8 @@ WTelegramClient, контейнер `waha` и Cloudflare-туннель удал
 | `TELEGRAM_MANAGER_CHAT_ID` | id группы, куда бот пишет уведомления (начинается с `-100…`); бота нужно добавить в группу |
 | `TELEGRAM_MANAGER_TOPIC_ID` | необязательно: id темы «Подтвердить игру» в группе-форуме. Число из ссылки на тему (`…/123?topic=456`) — это `456` |
 | `TELEGRAM_CONTACT_TOPIC_ID` | id темы «Связаться с клиентом» (туда уходит уведомление, если клиенту не удалось доставить подтверждение). Без неё такое уведомление остаётся в очереди с понятной ошибкой |
+| `TELEGRAM_API_BASE_URL` | необязательно: адрес релея Telegram Bot API (см. ниже). Пусто — сайт обращается прямо в `api.telegram.org` |
+| `TELEGRAM_RELAY_SECRET` | необязательно: общий секрет релея, уходит в заголовке `X-Relay-Secret` |
 
 Подключение (один раз, заказчиком): зарегистрироваться на app.wazzup24.ru, подключить номер WhatsApp и аккаунт
 Telegram (не бота — бот не может писать клиентам первым) и отсканировать QR-коды в самом Wazzup, скопировать ключ API
@@ -95,6 +97,28 @@ Telegram (не бота — бот не может писать клиентам
 
 Без этих переменных уведомление остаётся в очереди и ничего не отправляется — ошибка видна в журнале, а данные не
 теряются. Токен хранится только на сервере: в репозиторий его не коммитят.
+
+### Если api.telegram.org недоступен (релей)
+
+Прод-сервер не может достучаться до `api.telegram.org`: соединение по 443 висит и обрывается по таймауту (Telegram
+блокируется на уровне провайдера), при этом `api.wazzup24.com` отвечает. Поэтому вызовы бота идут через маленький
+Cloudflare Worker, который только пересылает запрос в Telegram (код, ограничения и пошаговая инструкция —
+`deploy/cloudflare-worker/README.md`):
+
+1. Workers & Pages → Create → Worker `muzloto-telegram-relay`, вставить содержимое
+   `deploy/cloudflare-worker/worker.js`, Deploy.
+2. Settings → Variables and Secrets → Secret `RELAY_SECRET` = длинная случайная строка (`openssl rand -hex 32`).
+3. В `/home/BocA/muzloto/.env`: `TELEGRAM_API_BASE_URL=https://muzloto-telegram-relay.<account>.workers.dev` и
+   `TELEGRAM_RELAY_SECRET=<тот же секрет>`, затем `docker compose up -d` (образ не меняется).
+4. Проверка с сервера: `curl -s -H "x-relay-secret: <секрет>" "<адрес>/bot<ТОКЕН>/getMe"` → `{"ok":true,…}`.
+
+Воркер разрешает только методы бота, которые использует сайт (`sendMessage`, `sendPhoto`, `sendDocument`,
+`getMe`, `getChat`), и требует заголовок `X-Relay-Secret` — по одному адресу воркера писать в бота нельзя.
+
+Уведомление о чеке не теряется, даже если оплату подтвердили раньше, чем бот успел его отправить: подтверждение
+глушит только ожидающие сообщения с реквизитами. Если уведомления всё равно не приходят, смотрите
+`OutgoingMessages.LastError` (там же, где статусы `Skipped`/`Failed`) и журнал:
+`docker compose logs --timestamps app | grep -i telegram`.
 
 ## Откат и диагностика
 

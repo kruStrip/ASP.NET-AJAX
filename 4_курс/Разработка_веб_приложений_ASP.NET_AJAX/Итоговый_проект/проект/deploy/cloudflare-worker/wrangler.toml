@@ -1,0 +1,7 @@
+name = "muzloto-telegram-relay"
+main = "worker.js"
+compatibility_date = "2026-11-03"
+
+# RELAY_SECRET is not stored here: set it as a secret
+#   npx wrangler secret put RELAY_SECRET
+# and put the same value into the server .env as TELEGRAM_RELAY_SECRET.

@@ -48,6 +48,10 @@ services:
       Telegram__ManagerChatId: ${TELEGRAM_MANAGER_CHAT_ID:-}
       Telegram__ManagerTopicId: ${TELEGRAM_MANAGER_TOPIC_ID:-}
       Telegram__ContactTopicId: ${TELEGRAM_CONTACT_TOPIC_ID:-}
+      # Telegram Bot API is blocked for this hosting: the calls go through a small Cloudflare Worker
+      # (deploy/cloudflare-worker). Empty TELEGRAM_API_BASE_URL = call api.telegram.org directly.
+      Telegram__ApiBaseUrl: ${TELEGRAM_API_BASE_URL:-}
+      Telegram__RelaySecret: ${TELEGRAM_RELAY_SECRET:-}
     volumes:
       - appdata:/data
     mem_limit: 320m

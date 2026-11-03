@@ -151,4 +151,45 @@ public sealed class TelegramBotChannelTests
         var outcome = await Channel(flood, Ready).SendAsync(Message(), CancellationToken.None);
         Assert.Equal((OutgoingMessageStatus.Failed, TimeSpan.FromSeconds(90)), (outcome.Status, outcome.RetryAfter));
     }
+
+    /// <summary>
+    /// The production server cannot reach api.telegram.org (Telegram is blocked for the hosting), so the calls go
+    /// through a small relay: Telegram:ApiBaseUrl replaces the host and every call carries the shared secret.
+    /// </summary>
+    [Fact]
+    public async Task Relay_CarriesTheCallsAndTheSharedSecret()
+    {
+        var http = new ScriptedHttp();
+        http.Enqueue(Ok());
+        var relayed = Config(("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"),
+            ("Telegram:ManagerTopicId", "77"), ("Telegram:ApiBaseUrl", "https://relay.example.workers.dev/"),
+            ("Telegram:RelaySecret", "s3cret"));
+
+        var outcome = await Channel(http, relayed).SendAsync(Message("текст"), CancellationToken.None);
+        Assert.Equal(OutgoingMessageStatus.Sent, outcome.Status);
+        var (request, _) = Assert.Single(http.Seen);
+        Assert.Equal("https://relay.example.workers.dev/bot123:ABC/sendMessage", request.RequestUri!.ToString());
+        Assert.Equal("s3cret", Assert.Single(request.Headers.GetValues("X-Relay-Secret")));
+
+        var photo = new ScriptedHttp();   // the file upload goes the same way
+        photo.Enqueue(Ok());
+        await Channel(photo, relayed, new FakeReceipts(TempFile(".png", [0x89, 0x50, 0x4E, 0x47, 1])))
+            .SendAsync(Message(), CancellationToken.None);
+        Assert.Equal("https://relay.example.workers.dev/bot123:ABC/sendPhoto",
+            photo.Seen.Single().Request.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task RelayRefusal_IsExplainedInsteadOfBlamingTheBotToken()
+    {
+        var http = new ScriptedHttp();
+        http.Enqueue(new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("forbidden") });
+        var relayed = Config(("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"),
+            ("Telegram:ApiBaseUrl", "https://relay.example.workers.dev"), ("Telegram:RelaySecret", "wrong"));
+
+        var outcome = await Channel(http, relayed).SendAsync(Message(), CancellationToken.None);
+        Assert.Equal(OutgoingMessageStatus.Failed, outcome.Status);
+        Assert.Contains("TELEGRAM_RELAY_SECRET", outcome.Error);
+        Assert.DoesNotContain("добавьте его в группу", outcome.Error);
+    }
 }

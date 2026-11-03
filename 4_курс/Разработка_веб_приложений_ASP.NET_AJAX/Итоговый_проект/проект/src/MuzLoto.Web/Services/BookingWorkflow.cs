@@ -212,10 +212,12 @@ public sealed class BookingWorkflow(
                         ContentUri = receiptUri, CreatedAt = now.AddSeconds(1), NextAttemptAt = now
                     });
             }
-            // Instructions to pay make no sense once the payment is confirmed; only not-yet-sent ones are dropped.
+            // Instructions to pay make no sense once the payment is confirmed, so not-yet-sent ones are dropped.
+            // The managers' receipt notification is kept: the receipt may have been uploaded seconds earlier (and be
+            // waiting in the queue), and the group must still get it — otherwise a fast confirmation swallows it.
             await db.OutgoingMessages
                 .Where(x => x.BookingId == booking.Id && x.Status == OutgoingMessageStatus.Pending &&
-                            x.Kind != OutgoingMessageKind.Confirmation)
+                            (x.Kind == OutgoingMessageKind.PaymentQr || x.Kind == OutgoingMessageKind.PaymentDetails))
                 .ForEachAsync(x =>
                 {
                     x.Status = OutgoingMessageStatus.Skipped;
