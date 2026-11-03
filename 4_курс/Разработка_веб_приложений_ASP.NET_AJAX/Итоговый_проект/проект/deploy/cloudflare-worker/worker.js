@@ -6,7 +6,8 @@
  *
  * Two ways through:
  *   POST /bot<ТОКЕН>/<метод>  — the call is forwarded as is (path, query string and body unchanged). Only the bot
- *                               methods the site uses are allowed.
+ *                               methods listed in ALLOWED_METHODS are let through; deleteMessage is there for
+ *                               operations only (deleting a message the bot sent by mistake), the site does not use it.
  *   POST /send-file           — JSON {token, chatId, topicId, caption, fileName, fileUrl}: the Worker downloads the
  *                               receipt from our site itself and uploads it to Telegram. The site cannot upload the
  *                               file: any request body over ~10 KB to *.workers.dev is dropped on the way by the
@@ -21,7 +22,7 @@
  */
 
 const TELEGRAM_API = "https://api.telegram.org";
-const ALLOWED_METHODS = new Set(["getMe", "getChat", "sendMessage", "sendPhoto", "sendDocument"]);
+const ALLOWED_METHODS = new Set(["getMe", "getChat", "sendMessage", "sendPhoto", "sendDocument", "deleteMessage"]);
 const DEFAULT_FILE_HOSTS = "muzloto.b-o-c-a.ru";
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 

@@ -79,6 +79,20 @@ text = await res.text();
 check("getChat reaches Telegram", res.status === 401 && text.includes("Unauthorized"), `${res.status} ${text.slice(0, 60)}`);
 check("query string is kept", seen.at(-1).url === "/bot123:ABC/getChat?chat_id=-100123", seen.at(-1).url);
 
+// 5b. deleteMessage is allowed for cleanup of a message the bot sent by mistake (the site does not call it).
+res = await worker.fetch(
+  new Request(base + "/bot123:ABC/deleteMessage", {
+    method: "POST",
+    headers: { "x-relay-secret": "test-secret", "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: "-100123", message_id: 30 }),
+  }),
+  env,
+);
+text = await res.text();
+check("deleteMessage is relayed", res.status === 401 && text.includes("Unauthorized"), `${res.status} ${text.slice(0, 60)}`);
+check("deleteMessage keeps the body", seen.at(-1).body.toString() === '{"chat_id":"-100123","message_id":30}',
+  seen.at(-1).body.toString());
+
 // 6. A multipart upload (sendPhoto/sendDocument) is forwarded as multipart with the caption and the file.
 const form = new FormData();
 form.set("chat_id", "-100123");
