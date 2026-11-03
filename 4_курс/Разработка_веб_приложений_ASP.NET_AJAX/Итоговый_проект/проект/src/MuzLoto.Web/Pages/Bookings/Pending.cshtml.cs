@@ -7,20 +7,30 @@ using MuzLoto.Web.Services;
 
 namespace MuzLoto.Web.Pages.Bookings;
 
+/// <summary>One card on «Нужно подтвердить»: imported requests have no account, so they can never get a receipt.</summary>
+public sealed record PendingCard(Booking Booking, int Remaining, bool Imported);
+
 [Authorize(Roles = "Admin,Manager")]
 public class PendingModel(AppDbContext db, IAuthorizationService authorization, BookingWorkflow workflow)
     : BookingListBase(db, authorization)
 {
     public List<Booking> Bookings { get; private set; } = new();
 
+    /// <summary>Requests carried over from Google Sheets: the customer has no account, so no receipt can arrive.</summary>
+    public List<Booking> ImportedWithoutReceipt { get; private set; } = new();
+
     public async Task OnGetAsync(CancellationToken ct)
     {
         // A request is only actionable for staff once the customer has sent a receipt (decided 2026-11-04):
         // before that there is nothing to check, so it stays out of «Нужно подтвердить».
-        Bookings = await ScopedBookings()
-            .Where(x => x.Status == BookingStatus.Pending && x.ReceiptUploadedAt != null)
+        var pending = ScopedBookings().Where(x => x.Status == BookingStatus.Pending);
+        Bookings = await pending.Where(x => x.ReceiptUploadedAt != null)
             .OrderByDescending(x => x.CreatedAt).Take(100).ToListAsync(ct);
-        await LoadSessionsAsync(Bookings, ct);
+        // Imported requests are the exception (decided 2026-11-04, after the move off Google Sheets): they have
+        // no owner account at all, so waiting for a receipt would hide them from staff forever.
+        ImportedWithoutReceipt = await pending.Where(x => x.ReceiptUploadedAt == null && x.LegacyId != null)
+            .OrderByDescending(x => x.CreatedAt).Take(100).ToListAsync(ct);
+        await LoadSessionsAsync(Bookings.Concat(ImportedWithoutReceipt), ct);
     }
 
     public async Task<IActionResult> OnPostConfirmAsync(Guid id, CancellationToken ct)

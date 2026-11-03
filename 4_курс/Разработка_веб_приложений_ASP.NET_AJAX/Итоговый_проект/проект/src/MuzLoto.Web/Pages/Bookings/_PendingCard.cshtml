@@ -1,0 +1,36 @@
+@model MuzLoto.Web.Pages.Bookings.PendingCard
+@{
+    var b = Model.Booking;
+    // A receipt is what staff usually check; an imported request may never have one.
+    var confirmText = b.ReceiptUploadedAt is null
+        ? "Чек клиента не загружен. Вы проверили оплату другим способом? После подтверждения будут заняты места."
+        : "Вы проверили получение оплаты? После подтверждения будут заняты места.";
+}
+<article class="booking-card" id="booking-@b.Id.ToString("N")" data-session-id="@b.GameSessionId"><div>
+<span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.Format(b.GameSession.StartsAt, b.GameSession.TimeZoneId)</span>
+<h2>@b.TeamName</h2>
+<p>@b.CustomerName · <b>@b.Quantity</b> бил. · <b>@((b.Quantity*b.TicketPriceSnapshot).ToString("N2"))</b> ₽</p>
+<p><a href="tel:@b.Phone">@b.Phone</a> <button type="button" class="small-button" data-copy="@b.Phone" data-copy-message="Телефон скопирован.">Скопировать</button> @if (!string.IsNullOrWhiteSpace(b.Telegram)) { <span>· Telegram: @b.Telegram</span> }</p>
+<p class="muted">Свободно мест на игре: @Model.Remaining · ID @b.Id.ToString()[..8]</p>
+<span class="status pending">Ожидает подтверждения</span>
+@if (b.ReceiptUploadedAt is { } sent)
+{
+    var receiptUrl = $"/receipts/{b.Id}?v={sent.ToUnixTimeSeconds()}";
+    <div class="receipt">
+        <p><b>Чек клиента</b> · загружен @ScheduleTime.Format(sent, b.GameSession.TimeZoneId)</p>
+        @if (CoverImages.IsPdf(b.ReceiptKey)) { <a class="button secondary" href="@receiptUrl" target="_blank" rel="noopener">Открыть PDF-чек</a> }
+        else { <a href="@receiptUrl" target="_blank" rel="noopener" title="Открыть в полном размере"><img class="receipt-thumb" src="@receiptUrl" alt="Чек или скриншот оплаты" loading="lazy" /></a> }
+    </div>
+}
+else if (Model.Imported)
+{
+    <p class="muted">Чек не загружен: заявка перенесена из Google Sheets, аккаунта на сайте у клиента нет. Подтверждайте оплату, только если проверили её другим способом.</p>
+}
+<partial name="_CustomerText" model="b" />
+</div><div class="button-stack">
+<form method="post" asp-page-handler="Confirm" data-ajax-action="booking-confirm" data-confirm="@confirmText"><input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Подтвердить оплату</button></form>
+<form method="post" asp-page-handler="Quantity" data-ajax-action="booking-quantity" class="inline-form"><input type="hidden" name="id" value="@b.Id" />
+<label class="sr-only" for="q-@b.Id">Количество билетов</label><input id="q-@b.Id" name="quantity" type="number" min="0" value="@b.Quantity" required />
+<button type="submit" class="button secondary">Изменить</button></form>
+<form method="post" asp-page-handler="Cancel" data-ajax-action="booking-cancel" data-confirm="Отменить эту заявку?"><input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button secondary">Отменить</button></form>
+</div></article>

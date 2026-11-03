@@ -104,6 +104,41 @@ public sealed class BookingPolicyHttpTests(AppFactory app)
         Assert.Equal(BookingStatus.Confirmed, (await ReloadAsync(booking.Id)).Status);
     }
 
+    /// <summary>Search also matches phone digits, so a unique word must not contain any numbers.</summary>
+    private static string UniqueWord() => new(Guid.NewGuid().ToString("N").Where(char.IsLetter).Take(8).ToArray());
+
+    [Fact]
+    public async Task ImportedRequestWithoutReceipt_IsShownToStaffInItsOwnSection()
+    {
+        var siteBooking = await CreatePendingBookingAsync();          // site form: waits for the customer's receipt
+        var imported = await CreatePendingBookingAsync();
+        var importedTeam = "Безчека " + UniqueWord();
+        var siteTeam = "Ждётчек " + UniqueWord();
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var row = await db.Bookings.SingleAsync(x => x.Id == imported.Id);
+            row.LegacyId = "30811518";
+            row.TeamName = importedTeam;
+            (await db.Bookings.SingleAsync(x => x.Id == siteBooking.Id)).TeamName = siteTeam;
+            await db.SaveChangesAsync();
+        }
+        var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
+
+        // Decided 2026-11-04: an imported request has no account, so no receipt can ever arrive — staff still see it.
+        var page = WebUtility.HtmlDecode(await admin.GetStringAsync("/bookings/pending?q=" + Uri.EscapeDataString(importedTeam)));
+        Assert.Contains($"booking-{imported.Id:N}", page);
+        Assert.Contains("Без чека", page);
+        Assert.Contains("Чек не загружен", page);
+        Assert.Contains("Вы проверили оплату другим способом?", page);
+        Assert.DoesNotContain("<b>Чек клиента</b>", page);
+
+        // A booking made on the site keeps waiting for the customer's receipt instead of cluttering the list.
+        var hidden = WebUtility.HtmlDecode(await admin.GetStringAsync("/bookings/pending?q=" + Uri.EscapeDataString(siteTeam)));
+        Assert.DoesNotContain($"booking-{siteBooking.Id:N}", hidden);
+        Assert.Contains("Ничего не найдено.", hidden);
+    }
+
     [Fact]
     public async Task JwtApi_IsNotBlockedByAntiforgery()
     {
