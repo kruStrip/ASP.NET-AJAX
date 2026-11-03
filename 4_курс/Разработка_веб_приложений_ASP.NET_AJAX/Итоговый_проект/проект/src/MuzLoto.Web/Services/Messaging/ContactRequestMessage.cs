@@ -14,8 +14,6 @@ public static class ContactRequestMessage
 
     public static string Build(Booking booking, GameSession session, Game game, int maxLength = 1024)
     {
-        var local = ScheduleTime.ToLocal(session.StartsAt, session.TimeZoneId);
-        var total = booking.TicketPriceSnapshot * booking.Quantity;
         var phone = Digits(booking.Phone);
         var nick = booking.Telegram?.Trim().TrimStart('@');
         var links = new List<string>();
@@ -29,6 +27,21 @@ public static class ContactRequestMessage
 
             Для отправки информации клиенту:
             __________________________
+            {CustomerText(booking, session, game)}
+            """;
+        // Telegram captions are limited (1024 characters): the text is what the manager forwards, so keep the start.
+        return text.Length <= maxLength ? text : text[..(maxLength - 1)] + "…";
+    }
+
+    /// <summary>
+    /// The message itself, without the managers' header: what a manager pastes into the customer's chat. The same
+    /// text is copied by the «Скопировать текст» button in the booking card, so the wording never drifts.
+    /// </summary>
+    public static string CustomerText(Booking booking, GameSession session, Game game)
+    {
+        var local = ScheduleTime.ToLocal(session.StartsAt, session.TimeZoneId);
+        var total = booking.TicketPriceSnapshot * booking.Quantity;
+        return $"""
             Здравствуйте!
             Вы записаны на игру: {game.Title}
 
@@ -40,13 +53,11 @@ public static class ContactRequestMessage
 
             Имя: {booking.CustomerName}
             Команда: {booking.TeamName}
-            Телефон: {phone}
+            Телефон: {Digits(booking.Phone)}
             Кол-во билетов: {booking.Quantity}
 
             Итого: {Money(total)} ₽
             """;
-        // Telegram captions are limited (1024 characters): the text is what the manager forwards, so keep the start.
-        return text.Length <= maxLength ? text : text[..(maxLength - 1)] + "…";
     }
 
     private static string Money(decimal amount) => amount.ToString("#,0.##", Ru);

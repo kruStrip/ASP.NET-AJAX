@@ -179,3 +179,9 @@ select option:checked{background:#7c0103 linear-gradient(#7c0103,#7c0103);color:
 .message-status .msg{padding:3px 8px;border-radius:999px;background:rgba(0,0,0,.28)}
 .message-status .msg.ok{background:rgba(255,255,255,.18)}
 .message-status .msg.fail{text-decoration:underline dotted}
+/* Staff card: the message a manager forwards to the customer by hand, copied with one tap */
+.customer-text{margin-top:10px;font-size:14px}
+.customer-text summary{cursor:pointer;color:var(--muted)}
+.customer-text[open] summary{margin-bottom:8px}
+.customer-text-body{padding:12px 14px;border-radius:10px;background:var(--field);font-size:14px;line-height:1.45;max-width:520px;overflow-x:auto}
+.customer-text .small-button{margin-top:8px}

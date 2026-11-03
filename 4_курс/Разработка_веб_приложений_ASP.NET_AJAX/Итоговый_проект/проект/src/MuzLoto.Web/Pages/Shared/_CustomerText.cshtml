@@ -1,0 +1,12 @@
+@using MuzLoto.Web.Services.Messaging
+@model Booking
+@{
+    // The very text a manager forwards by hand (the bot sends it too when the confirmation cannot be delivered).
+    // It is copied with one tap: selecting a long message inside a messenger on a phone is painful.
+    var customerText = ContactRequestMessage.CustomerText(Model, Model.GameSession, Model.GameSession.Game);
+}
+<details class="customer-text">
+    <summary>Текст для клиента</summary>
+    <div class="pre-line customer-text-body">@customerText</div>
+    <button type="button" class="small-button" data-copy="@customerText" data-copy-message="Текст для клиента скопирован.">Скопировать текст</button>
+</details>

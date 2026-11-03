@@ -24,6 +24,7 @@
     </div>
 }
 else { <p class="muted">Чек ещё не загружен.</p> }
+<partial name="_CustomerText" model="b" />
 </div><div class="button-stack">
 <form method="post" asp-page-handler="Confirm" data-ajax-action="booking-confirm" data-confirm="Вы проверили получение оплаты? После подтверждения будут заняты места."><input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Подтвердить оплату</button></form>
 <form method="post" asp-page-handler="Quantity" data-ajax-action="booking-quantity" class="inline-form"><input type="hidden" name="id" value="@b.Id" />

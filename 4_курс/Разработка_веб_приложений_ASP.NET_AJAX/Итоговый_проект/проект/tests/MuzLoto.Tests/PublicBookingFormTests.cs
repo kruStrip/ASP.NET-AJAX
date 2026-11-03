@@ -221,6 +221,11 @@ public sealed class PublicBookingFormTests(AppFactory app)
         var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
         var pending = WebUtility.HtmlDecode(await admin.GetStringAsync("/bookings/pending?q=" + Uri.EscapeDataString(booking.TeamName)));
         Assert.Contains("Чек клиента", pending);
+        // The manager can copy the message for the customer with one tap instead of selecting a long block.
+        Assert.Contains("Текст для клиента", pending);
+        Assert.Contains("Скопировать текст", pending);
+        Assert.Contains("data-copy-message=\"Текст для клиента скопирован.\"", pending);
+        Assert.Contains("Здравствуйте!", pending);
         Assert.Contains($"/receipts/{booking.Id}", pending);
         Assert.Equal(Png, await (await admin.GetAsync($"/receipts/{booking.Id}")).Content.ReadAsByteArrayAsync());
         Assert.Equal(Png, await (await client.GetAsync($"/receipts/{booking.Id}")).Content.ReadAsByteArrayAsync());   // the owner
