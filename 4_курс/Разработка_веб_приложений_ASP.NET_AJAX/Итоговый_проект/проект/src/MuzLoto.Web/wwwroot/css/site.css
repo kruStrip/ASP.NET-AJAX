@@ -165,6 +165,8 @@ select option:checked{background:#7c0103 linear-gradient(#7c0103,#7c0103);color:
 .receipt-form{display:grid;gap:6px;max-width:460px}
 .receipt-form .button{justify-self:start}
 .receipt-sent{font-weight:700}
+.payment-block .receipt-sent-panel{padding:12px 14px;border-radius:12px;background:var(--field);display:grid;gap:6px}
+.payment-block .receipt-sent-panel p{margin:0}
 .receipt{margin-top:10px}
 .receipt-thumb{display:block;max-width:220px;max-height:220px;border-radius:10px;background:#fff;object-fit:contain}
 .new-account{margin-bottom:18px}

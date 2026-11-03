@@ -173,7 +173,11 @@ public sealed class PublicBookingFormTests(AppFactory app)
         Assert.Contains("Заявка принята", WebUtility.HtmlDecode(await pay.Content.ReadAsStringAsync()));
         var upload = await UploadReceiptAsync(stranger, payUrl, payUrl + "?handler=Receipt", null, Png);
         Assert.Equal(HttpStatusCode.Redirect, upload.StatusCode);
-        Assert.Contains("Чек отправлен", WebUtility.HtmlDecode(await stranger.GetStringAsync(payUrl)));
+        var paidView = WebUtility.HtmlDecode(await stranger.GetStringAsync(payUrl));
+        Assert.Contains("Чек отправлен", paidView);
+        Assert.Contains("Менеджер проверит оплату и подтвердит бронь.", paidView);
+        Assert.DoesNotContain("После оплаты загрузите чек", paidView);   // the upload prompt is done
+        Assert.DoesNotContain("QR-код для оплаты", paidView);
     }
 
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 5, 5, 5, 5];
@@ -197,6 +201,12 @@ public sealed class PublicBookingFormTests(AppFactory app)
         await PostAsync(client, s, "Submit", Fields(s));
         var booking = Assert.Single(await BookingsAsync(s.Id));
 
+        // Decided 2026-11-04: a request without a receipt is not actionable, so «Нужно подтвердить» hides it.
+        var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
+        var beforeReceipt = WebUtility.HtmlDecode(await admin.GetStringAsync("/bookings/pending?q=" + Uri.EscapeDataString(booking.TeamName)));
+        Assert.DoesNotContain($"booking-{booking.Id:N}", beforeReceipt);
+        Assert.Contains("Ничего не найдено.", beforeReceipt);
+
         var rejected = await UploadReceiptAsync(client, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, "not a receipt"u8.ToArray(), "x.png");
         Assert.Equal(HttpStatusCode.Redirect, rejected.StatusCode);
         Assert.Null(Assert.Single(await BookingsAsync(s.Id)).ReceiptKey);           // only images and PDF
@@ -218,7 +228,6 @@ public sealed class PublicBookingFormTests(AppFactory app)
                 Assert.Contains(line, text);
         }
 
-        var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
         var pending = WebUtility.HtmlDecode(await admin.GetStringAsync("/bookings/pending?q=" + Uri.EscapeDataString(booking.TeamName)));
         Assert.Contains("Чек клиента", pending);
         // The manager can copy the message for the customer with one tap instead of selecting a long block.

@@ -47,8 +47,9 @@ public class MineModel(AppDbContext db, IAuthorizationService authorization, Cov
         return RedirectToPage(null, null, anchor);
     }
 
-    public static string StatusText(BookingStatus status) => status switch
+    public static string StatusText(BookingStatus status, bool receiptSent = false) => status switch
     {
+        BookingStatus.Pending when receiptSent => "Чек отправлен, ждём подтверждения",
         BookingStatus.Pending => "Ожидает подтверждения оплаты",
         BookingStatus.Confirmed => "Оплата подтверждена",
         _ => "Отменена"

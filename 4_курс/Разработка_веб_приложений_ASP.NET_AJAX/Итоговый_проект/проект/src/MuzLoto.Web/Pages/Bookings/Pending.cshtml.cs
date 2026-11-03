@@ -15,7 +15,10 @@ public class PendingModel(AppDbContext db, IAuthorizationService authorization, 
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        Bookings = await ScopedBookings().Where(x => x.Status == BookingStatus.Pending)
+        // A request is only actionable for staff once the customer has sent a receipt (decided 2026-11-04):
+        // before that there is nothing to check, so it stays out of «Нужно подтвердить».
+        Bookings = await ScopedBookings()
+            .Where(x => x.Status == BookingStatus.Pending && x.ReceiptUploadedAt != null)
             .OrderByDescending(x => x.CreatedAt).Take(100).ToListAsync(ct);
         await LoadSessionsAsync(Bookings, ct);
     }

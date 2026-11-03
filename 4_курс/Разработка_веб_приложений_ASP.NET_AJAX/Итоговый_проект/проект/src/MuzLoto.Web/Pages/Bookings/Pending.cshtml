@@ -2,7 +2,7 @@
 @model MuzLoto.Web.Pages.Bookings.PendingModel
 @{ ViewData["Title"] = "Нужно подтвердить"; }
 <div class="page-heading"><div><div class="eyebrow">Поступившие заявки</div><h1>Нужно подтвердить</h1>
-<p class="muted">Заявки не занимают места до подтверждения оплаты сотрудником.</p></div></div>
+<p class="muted">Сюда попадают заявки, по которым клиент уже прислал чек. Заявки не занимают места до подтверждения оплаты сотрудником.</p></div></div>
 <partial name="_BookingSearch" model="Model.Q" />
 <div class="card-list" data-live-list>
 @foreach (var b in Model.Bookings)
@@ -23,7 +23,6 @@
         else { <a href="@receiptUrl" target="_blank" rel="noopener" title="Открыть в полном размере"><img class="receipt-thumb" src="@receiptUrl" alt="Чек или скриншот оплаты" loading="lazy" /></a> }
     </div>
 }
-else { <p class="muted">Чек ещё не загружен.</p> }
 <partial name="_CustomerText" model="b" />
 </div><div class="button-stack">
 <form method="post" asp-page-handler="Confirm" data-ajax-action="booking-confirm" data-confirm="Вы проверили получение оплаты? После подтверждения будут заняты места."><input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Подтвердить оплату</button></form>
@@ -33,7 +32,7 @@ else { <p class="muted">Чек ещё не загружен.</p> }
 <form method="post" asp-page-handler="Cancel" data-ajax-action="booking-cancel" data-confirm="Отменить эту заявку?"><input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button secondary">Отменить</button></form>
 </div></article>
 }
-@if (Model.Bookings.Count == 0) { <p class="muted">@(string.IsNullOrWhiteSpace(Model.Q) ? "Неоплаченных заявок нет." : "Ничего не найдено.")</p> }
+@if (Model.Bookings.Count == 0) { <p class="muted">@(string.IsNullOrWhiteSpace(Model.Q) ? "Заявок с чеком на проверку нет." : "Ничего не найдено.")</p> }
 </div>
 
 @foreach (var sessionId in Model.AccessibleSessionIds) { <span hidden data-signalr-session="@sessionId"></span> }

@@ -28,8 +28,10 @@
     </dl>
     @if (b.Status == BookingStatus.Pending)
     {
-        <h2 class="center">Оплата</h2>
+        @if (b.ReceiptUploadedAt is null) { <h2 class="center">Оплата</h2> }
         <partial name="_PaymentBlock" model="new MuzLoto.Web.Pages.Shared.PaymentBlockModel(b, settings, uploadUrl, Model.IsOwner)" />
-        <p class="muted center">Бронь подтверждается после того, как менеджер проверит оплату. Сохраните эту страницу — по ссылке будет виден статус заявки.</p>
+        <p class="muted center">@(b.ReceiptUploadedAt is null
+            ? "Бронь подтверждается после того, как менеджер проверит оплату. Сохраните эту страницу — по ссылке будет виден статус заявки."
+            : "Когда бронь подтвердят, мы напишем вам в Telegram. Сохраните эту страницу — по ссылке будет виден статус заявки.")</p>
     }
 </section>

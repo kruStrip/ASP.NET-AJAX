@@ -22,7 +22,7 @@
 <span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.Format(b.GameSession.StartsAt, b.GameSession.TimeZoneId)</span>
 <h2>@b.TeamName</h2>
 <p>@b.Quantity бил. · @((b.Quantity * b.TicketPriceSnapshot).ToString("N2")) ₽ · @b.GameSession.Venue</p>
-<span class="status @MineModel.StatusClass(b.Status)">@MineModel.StatusText(b.Status)</span>
+<span class="status @MineModel.StatusClass(b.Status)">@MineModel.StatusText(b.Status, b.ReceiptUploadedAt is not null)</span>
 @if (b.Status == MuzLoto.Web.Domain.BookingStatus.Pending)
 {
     <partial name="_PaymentBlock" model="new MuzLoto.Web.Pages.Shared.PaymentBlockModel(b, Model.Settings, uploadUrl, true)" />
