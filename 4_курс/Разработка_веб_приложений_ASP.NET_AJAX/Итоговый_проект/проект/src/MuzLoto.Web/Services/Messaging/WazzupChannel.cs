@@ -21,7 +21,7 @@ public sealed record WazzupState(string Status, string? Detail, IReadOnlyList<Wa
 /// calls the Wazzup API with an API key, so no messenger sessions or gateway containers live on our server.
 /// Configuration: Wazzup:ApiKey (required) and optional Wazzup:WhatsAppChannelId / Wazzup:TelegramChannelId —
 /// without an id the only channel of the matching type is picked automatically (a plain WhatsApp number before
-/// WABA, a Telegram account before a bot).
+/// WABA, a Telegram account before a bot); several channels of one type block sending until one is pinned.
 /// </summary>
 public sealed class WazzupChannel(IHttpClientFactory httpFactory, IConfiguration config, MessageChannel channel) : IMessengerChannel
 {
@@ -84,9 +84,18 @@ public sealed class WazzupChannel(IHttpClientFactory httpFactory, IConfiguration
     {
         if (match is not { } found)
             return NoChannel(config[channel is MessageChannel.WhatsApp ? "Wazzup:WhatsAppChannelId" : "Wazzup:TelegramChannelId"]?.Trim());
-        var detail = found.Channel.PlainId is { Length: > 0 } plain ? plain : null;
+        // Several channels of the same messenger: guessing means writing to customers from the wrong account
+        // (that happened on 2026-11-03 — the personal account answered instead of the company's). Nothing is sent
+        // until a manager pins the intended channel with its id.
         if (found.Several)
-            detail += $" ; в Wazzup несколько каналов «{Name}» — можно закрепить один через {EnvChannelId}.";
+        {
+            var candidates = all.Where(c => Transports.Contains(c.Transport))
+                .Select(c => c.PlainId is { Length: > 0 } plain ? plain : c.ChannelId);
+            return new("AMBIGUOUS",
+                $"В Wazzup несколько каналов «{Name}» ({string.Join(", ", candidates)}) — с какого писать, не угадать. " +
+                $"Укажите нужный в {EnvChannelId} на сервере: до этого сообщения ждут.", all);
+        }
+        var detail = found.Channel.PlainId is { Length: > 0 } plainId ? plainId : null;
         return new(found.Channel.State, detail, all, found.Channel);
     }
 
@@ -122,6 +131,7 @@ public sealed class WazzupChannel(IHttpClientFactory httpFactory, IConfiguration
             case "UNAUTHORIZED": return SendOutcome.Failed("Wazzup отклонил ключ API — проверьте WAZZUP_API_KEY.");
             case "UNAVAILABLE": return SendOutcome.Failed("Сервис Wazzup недоступен, повторим позже.");
             case "NO_CHANNEL": return SendOutcome.Failed("В Wazzup не найден канал «" + Name + "» — подключите его и повторите.");
+            case "AMBIGUOUS": return SendOutcome.Failed(state.Detail ?? $"В Wazzup несколько каналов «{Name}» — закрепите нужный в {EnvChannelId}.");
             case "active": break;
             default: return SendOutcome.Failed($"Канал «{Name}» в Wazzup не активен ({state.Status}) — сообщение будет ждать.");
         }

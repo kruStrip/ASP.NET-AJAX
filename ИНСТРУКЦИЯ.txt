@@ -1,0 +1,10 @@
+1. Откройте терминал на компьютере с доступом к GitHub.
+2. git clone https://github.com/kruStrip/ASP.NET-AJAX.git
+3. cd ASP.NET-AJAX
+4. unzip -o /ПУТЬ/К/ASP.NET-AJAX_готово_для_GitHub.zip
+5. bash setup_course_repo.sh
+6. git add README.md '4_курс/Разработка_веб_приложений_ASP.NET_AJAX'
+7. git commit -m 'docs: organize ASP.NET course materials'
+8. git push origin main
+
+Весь исходный код практических работ будет скопирован из существующих каталогов в нужные места; оригинальные каталоги не изменяются. «МузЛото» пока не содержит реализации.

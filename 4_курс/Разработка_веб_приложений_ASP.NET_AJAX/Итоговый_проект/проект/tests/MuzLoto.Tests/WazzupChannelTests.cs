@@ -150,17 +150,24 @@ public sealed class WazzupChannelTests
     }
 
     [Fact]
-    public async Task WithoutAPinnedId_TheOnlyActiveChannelIsPicked_AndAmbiguityIsHinted()
+    public async Task SeveralChannelsWithoutAPinnedId_BlockSending()
     {
-        var http = new ScriptedHttp();
-        http.Enqueue(Channels(
+        var single = new ScriptedHttp();
+        single.Enqueue(Channels(
             ChannelJson("wa-1", "whatsapp", "79865784457", "init"),
             ChannelJson("wa-2", "whatsapp", "79990001122")));
-        var channel = Channel(http, Config(("Wazzup:ApiKey", "key")), MessageChannel.WhatsApp);
+        var channel = Channel(single, Config(("Wazzup:ApiKey", "key")), MessageChannel.WhatsApp);
         var state = await channel.StateAsync(CancellationToken.None);
-        Assert.Equal("wa-2", state.Resolved!.ChannelId);       // the active one of the two
-        Assert.Equal("active", state.Status);
-        Assert.Contains("несколько каналов", state.Detail);     // and the page hints to pin one via WAZZUP_WHATSAPP_CHANNEL_ID
+        // Two channels of one type: no guessing, nothing is sent from an account a manager did not choose.
+        Assert.Equal("AMBIGUOUS", state.Status);
+        Assert.Null(state.Resolved);
+        Assert.Contains("WAZZUP_WHATSAPP_CHANNEL_ID", state.Detail);
+        Assert.Contains("79865784457", state.Detail);           // the numbers are listed for the manager to pick
+        Assert.False(await channel.IsReadyAsync(CancellationToken.None));
+        var outcome = await channel.SendAsync(Message(Booking(), "текст"), CancellationToken.None);
+        Assert.Equal(OutgoingMessageStatus.Failed, outcome.Status);
+        Assert.Contains("WAZZUP_WHATSAPP_CHANNEL_ID", outcome.Error);
+        Assert.Single(single.Seen);                             // only the channel list, no message was sent
 
         // A plain WhatsApp number wins over WhatsApp Business API even when the latter is the only active one.
         var withWaba = new ScriptedHttp();

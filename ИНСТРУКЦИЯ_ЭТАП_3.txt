@@ -1,0 +1,18 @@
+МузЛото — этап 3: перенос безопасных правил из старого Apps Script
+
+Это ПАТЧ, а не полный снимок репозитория. Применяется поверх этапа 2 с добавленной InitialCreate миграцией.
+
+1. Скачайте ZIP в ~/Downloads.
+2. На компьютере, из корня репозитория:
+   cd ~/ASP.NET-AJAX
+   unzip -o ~/Downloads/MuzLoto_stage3_legacy_rules.zip
+   git status --short
+   git add 4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект/
+   git commit -m "feat(muzloto): restore cancelled bookings and reconcile legacy logic"
+   git push origin main
+3. Дождитесь результата GitHub Actions.
+4. Перезапустите локальное приложение из папки проекта (Ctrl+C в старом терминале, затем bash scripts/dev.sh).
+5. Проверьте /bookings/cancelled и /events/completed, прочитайте docs/STAGE3.md.
+
+В пакете нет .env, миграций EF Core или персональных данных покупателей. База данных не сбрасывается.
+В этой среде отсутствует .NET SDK; успешную компиляцию должен подтвердить GitHub Actions.

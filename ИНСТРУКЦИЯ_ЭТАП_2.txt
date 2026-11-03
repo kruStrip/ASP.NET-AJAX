@@ -1,0 +1,33 @@
+МУЗЛОТО — ЭТАП 2 (ASP.NET CORE)
+
+Это обновление ПОВЕРХ опубликованного этапа 1 в kruStrip/ASP.NET-AJAX.
+Распаковывать архив нужно в КОРНЕ репозитория.
+
+КОМАНДЫ (Linux Omarchy):
+
+cd ~/ASP.NET-AJAX
+unzip -o ~/Downloads/MuzLoto_stage2_update.zip
+git add .github/workflows/muzloto.yml '4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/'
+git commit -m 'feat(muzloto): REST v1 v2 JWT AJAX SignalR and PostgreSQL CI'
+git push origin main
+
+Потом открыть https://github.com/kruStrip/ASP.NET-AJAX/actions
+и дождаться нового workflow MuzLoto build, tests and PostgreSQL smoke.
+
+Внутри CI: сборка, unit-тесты, генерация InitialCreate и применение
+миграции в Postgres 16, интеграционный тест бронирований, JWT HTTP smoke.
+МИГРАЦИЮ НУЖНО В ДАЛЬНЕЙШЕМ ЗАФИКСИРОВАТЬ: скачать artifact
+'muzloto-ef-migrations' из успешного workflow и добавить исходники
+Data/Migrations в репозиторий.
+
+Если нужно поднять локально: находясь в каталоге
+4_курс/Разработка_веб_приложений_ASP.NET_AJAX/Итоговый_проект/проект:
+cp .env.example .env
+# заполнить REPLACE_...
+docker compose up -d postgres
+bash scripts/init-db.sh
+bash scripts/install-client.sh
+bash scripts/dev.sh
+
+Ограничение: исходники ЭТАПА 2 не прошли dotnet build в среде подготовки.
+Не загружать реальные заявки, токены или рабочие учётные данные в публичный GitHub.
