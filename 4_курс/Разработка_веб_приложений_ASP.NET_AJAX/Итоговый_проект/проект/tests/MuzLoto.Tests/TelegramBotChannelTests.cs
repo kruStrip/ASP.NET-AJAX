@@ -149,9 +149,66 @@ public sealed class TelegramBotChannelTests
         Assert.Empty(noTopic.Seen);
     }
 
+    /// <summary>
+    /// «Связаться с клиентом» is sent as HTML with the customer's block in &lt;pre&gt;: Telegram then shows a «Copy»
+    /// button, and a manager copies the text with one tap instead of selecting it by hand on a phone.
+    /// </summary>
     [Fact]
-    public async Task TelegramErrors_AreExplained()
+    public async Task ContactRequest_IsSentAsHtml_WithACopyableBlock()
     {
+        var withTopic = Config(("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"),
+            ("Telegram:ManagerTopicId", "77"), ("Telegram:ContactTopicId", "88"));
+        var http = new ScriptedHttp();
+        http.Enqueue(Ok());
+        var text = "Связаться с клиентом\n\nTelegram: https://t.me/team_msg\n\nДля отправки информации клиенту:\n"
+                   + "__________________________\nЗдравствуйте!\nИтого: 1\u00A0400 ₽";
+        await Channel(http, withTopic).SendAsync(ContactMessage(text), CancellationToken.None);
+
+        using var json = JsonDocument.Parse(http.Seen.Single().Body);
+        Assert.Equal("HTML", json.RootElement.GetProperty("parse_mode").GetString());
+        var sent = json.RootElement.GetProperty("text").GetString()!;
+        Assert.StartsWith("Связаться с клиентом", sent);
+        Assert.Contains("<pre>Здравствуйте!\nИтого: 1\u00A0400 ₽</pre>", sent);
+        Assert.DoesNotContain("https://t.me/team_msg</pre>", sent);   // links stay outside the copyable block
+    }
+
+    /// <summary>A receipt attached to the same notification: the HTML block rides along as the caption.</summary>
+    [Fact]
+    public async Task ContactRequestWithAReceipt_KeepsTheHtmlCaption_ThroughARelayAndOnUpload()
+    {
+        var withTopic = Config(("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"),
+            ("Telegram:ContactTopicId", "88"), ("Telegram:ApiBaseUrl", "https://relay.example.workers.dev"),
+            ("Telegram:RelaySecret", "s3cret"));
+        var message = new OutgoingMessage
+        {
+            Booking = new Booking { Id = Guid.NewGuid(), Phone = "+79140000000", ReceiptKey = "receipts/abc.png" },
+            Text = "Связаться с клиентом\n__________________________\nЗдравствуйте!", Kind = OutgoingMessageKind.ContactRequest
+        };
+
+        var relay = new ScriptedHttp();
+        relay.Enqueue(Ok());
+        await Channel(relay, withTopic).SendAsync(message, CancellationToken.None);
+        using (var json = JsonDocument.Parse(relay.Seen.Single().Body))
+        {
+            Assert.Equal("HTML", json.RootElement.GetProperty("parseMode").GetString());
+            Assert.Equal("<pre>Здравствуйте!</pre>", json.RootElement.GetProperty("caption").GetString()!.Split('\n')[^1]);
+        }
+
+        // Without a relay the file is uploaded as multipart: the parse mode must be a form field there too.
+        var upload = new ScriptedHttp();
+        upload.Enqueue(Ok());
+        var direct = Config(("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"),
+            ("Telegram:ContactTopicId", "88"));
+        await Channel(upload, direct, new FakeReceipts(TempFile(".png", [0x89, 0x50, 0x4E, 0x47])))
+            .SendAsync(message, CancellationToken.None);
+        var body = upload.Seen.Single().Body;
+        Assert.Contains("name=parse_mode", body);
+        Assert.Contains("HTML", body);
+        Assert.Contains("<pre>", body);   // the caption keeps its HTML; Telegram parses it with parse_mode=HTML
+    }
+
+    [Fact]
+    public async Task TelegramErrors_AreExplained()    {
         var unauthorized = new ScriptedHttp();
         unauthorized.Enqueue(new HttpResponseMessage(HttpStatusCode.Unauthorized));
         Assert.Contains("TELEGRAM_BOT_TOKEN", (await Channel(unauthorized, Ready).SendAsync(Message(), CancellationToken.None)).Error);

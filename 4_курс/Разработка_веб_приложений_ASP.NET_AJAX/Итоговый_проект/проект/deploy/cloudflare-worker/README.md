@@ -17,9 +17,13 @@ JSON:
 ```json
 POST /send-file
 { "token": "123:ABC", "chatId": "-100…", "topicId": "2",
-  "caption": "Номер клиента: …", "fileName": "…jpg",
+  "caption": "Номер клиента: …", "parseMode": "HTML", "fileName": "…jpg",
   "fileUrl": "https://muzloto.b-o-c-a.ru/receipts/<id>/<файл>?t=<подпись>" }
 ```
+
+`parseMode` необязателен и пересылается в Telegram как `parse_mode`. Уведомление «Связаться с клиентом» приходит
+с `parseMode: "HTML"`: текст для клиента обёрнут в `<pre>`, поэтому в Telegram у блока появляется кнопка
+«Copy» — менеджер копирует сообщение одним касанием, а не выделяет его вручную на телефоне.
 
 Воркер сам скачивает файл по ссылке и отправляет его в Telegram как `sendPhoto` (картинка) или `sendDocument`
 (всё остальное, например PDF). Ограничения: только `https`, только хосты из переменной `FILE_HOSTS`

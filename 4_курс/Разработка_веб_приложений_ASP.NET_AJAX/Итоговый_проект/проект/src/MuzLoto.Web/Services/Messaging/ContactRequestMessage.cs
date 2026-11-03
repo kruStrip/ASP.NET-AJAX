@@ -12,6 +12,9 @@ public static class ContactRequestMessage
 {
     private static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
 
+    /// <summary>The line between the managers' header and the text the manager forwards to the customer.</summary>
+    private const string Separator = "__________________________";
+
     public static string Build(Booking booking, GameSession session, Game game, int maxLength = 1024)
     {
         var phone = Digits(booking.Phone);
@@ -26,11 +29,37 @@ public static class ContactRequestMessage
             {string.Join('\n', links)}
 
             Для отправки информации клиенту:
-            __________________________
+            {Separator}
             {CustomerText(booking, session, game)}
             """;
         // Telegram captions are limited (1024 characters): the text is what the manager forwards, so keep the start.
         return text.Length <= maxLength ? text : text[..(maxLength - 1)] + "…";
+    }
+
+    /// <summary>
+    /// The same text as HTML for the Telegram bot (parse_mode=HTML): the customer's block sits in a &lt;pre&gt; element,
+    /// and Telegram shows it as a monospace block with a «Copy» button — one tap instead of selecting a long message
+    /// on a phone (decision of 2026-11-03). Everything is HTML-escaped: names and venues may contain &lt;, &gt; or &amp;.
+    /// The whole message must still fit Telegram's 1024-character caption limit, so the customer's block is shortened
+    /// (with «…») when the escaping makes it too long.
+    /// </summary>
+    public static string ToTelegramHtml(string text, int maxLength = 1024)
+    {
+        var at = text.IndexOf(Separator, StringComparison.Ordinal);
+        // Without the separator (a message queued before this change) the whole text becomes the copyable block.
+        var header = at < 0 ? "" : text[..(at + Separator.Length)];
+        var body = (at < 0 ? text : text[(at + Separator.Length)..]).Trim('\n');
+        var prefix = (header.Length > 0 ? Escape(header) + "\n" : "") + "<pre>";
+        const string suffix = "</pre>";
+        var budget = maxLength - prefix.Length - suffix.Length;
+        if (Escape(body).Length > budget)
+        {
+            // The ellipsis itself takes a character, so it is counted while shrinking the block.
+            do { body = (body.Length > 0 ? body[..^1] : body).TrimEnd(); }
+            while (body.Length > 0 && Escape(body + "…").Length > budget);
+            body = body.Length > 0 ? body + "…" : "";
+        }
+        return prefix + Escape(body) + suffix;
     }
 
     /// <summary>
@@ -59,6 +88,13 @@ public static class ContactRequestMessage
             Итого: {Money(total)} ₽
             """;
     }
+
+    /// <summary>
+    /// Only the three characters Telegram treats as HTML. WebUtility.HtmlEncode is not used on purpose: it turns every
+    /// Cyrillic letter and the non-breaking space in «1 400 ₽» into numeric entities, which Telegram would show as is.
+    /// </summary>
+    private static string Escape(string value) =>
+        value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
     private static string Money(decimal amount) => amount.ToString("#,0.##", Ru);
 

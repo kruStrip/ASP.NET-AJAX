@@ -8,11 +8,13 @@
  *   POST /bot<ТОКЕН>/<метод>  — the call is forwarded as is (path, query string and body unchanged). Only the bot
  *                               methods listed in ALLOWED_METHODS are let through; deleteMessage is there for
  *                               operations only (deleting a message the bot sent by mistake), the site does not use it.
- *   POST /send-file           — JSON {token, chatId, topicId, caption, fileName, fileUrl}: the Worker downloads the
- *                               receipt from our site itself and uploads it to Telegram. The site cannot upload the
- *                               file: any request body over ~10 KB to *.workers.dev is dropped on the way by the
- *                               provider's filtering (checked 2026-11-03), while small JSON passes and the Worker's own
- *                               requests to Telegram are not affected.
+ *   POST /send-file           — JSON {token, chatId, topicId, caption, parseMode, fileName, fileUrl}: the Worker
+ *                               downloads the receipt from our site itself and uploads it to Telegram. The site
+ *                               cannot upload the file: any request body over ~10 KB to *.workers.dev is dropped on
+ *                               the way by the provider's filtering (checked 2026-11-03), while small JSON passes and
+ *                               the Worker's own requests to Telegram are not affected. `parseMode` (HTML) is
+ *                               forwarded as `parse_mode`, so a caption can carry the <pre> block with its «Copy»
+ *                               button.
  *
  * Both require the shared secret header X-Relay-Secret: the URL alone is not enough, so nobody else can push
  * messages through the company's bot.
@@ -107,6 +109,9 @@ async function sendFile(request, env) {
   const caption = text(call.caption);
   // Telegram rejects captions longer than 1024 characters; the site trims them too, this is a safety net.
   if (caption) form.set("caption", caption.length > 1024 ? caption.slice(0, 1023) + "…" : caption);
+  // «Связаться с клиентом» comes as HTML: the customer's text sits in <pre>, so Telegram shows a «Copy» button.
+  const parseMode = text(call.parseMode);
+  if (parseMode) form.set("parse_mode", parseMode);
   form.set(isPhoto ? "photo" : "document", new Blob([bytes], { type: contentType }), fileName);
 
   const upstream = await fetch(`${TELEGRAM_API}/bot${token}/${isPhoto ? "sendPhoto" : "sendDocument"}`, {

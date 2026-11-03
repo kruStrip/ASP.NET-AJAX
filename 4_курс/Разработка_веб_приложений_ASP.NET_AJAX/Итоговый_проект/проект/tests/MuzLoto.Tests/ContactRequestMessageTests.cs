@@ -47,4 +47,57 @@ public sealed class ContactRequestMessageTests
         Assert.Contains("__________________________", text);
         Assert.EndsWith(ContactRequestMessage.CustomerText(Booking, Session, Session.Game), text);
     }
+
+    /// <summary>Telegram shows a «Copy» button for a &lt;pre&gt; block — that is the point of the HTML version.</summary>
+    [Fact]
+    public void TelegramHtml_WrapsOnlyTheCustomerTextIntoTheCopyableBlock()
+    {
+        var html = ContactRequestMessage.ToTelegramHtml(ContactRequestMessage.Build(Booking, Session, Session.Game));
+        Assert.Contains("<pre>" + ContactRequestMessage.CustomerText(Booking, Session, Session.Game).TrimEnd() + "</pre>", html);
+        Assert.True(html.IndexOf("https://t.me/team_msg", StringComparison.Ordinal) < html.IndexOf("<pre>", StringComparison.Ordinal));
+        Assert.EndsWith("</pre>", html);
+        Assert.Equal(1, html.Split("<pre>").Length - 1);
+    }
+
+    [Fact]
+    public void TelegramHtml_EscapesWhatTheCustomerCouldHaveTyped()
+    {
+        var booking = new Booking
+        {
+            TeamName = "<b>МЯУ</b>", CustomerName = "Вика & Ко", Phone = "+79934902720",
+            Quantity = 2, TicketPriceSnapshot = 700m
+        };
+        var session = new GameSession
+        {
+            Game = new Game { Title = "Квиз <Сумерки>" },
+            StartsAt = Session.StartsAt, TimeZoneId = Session.TimeZoneId, Venue = "Киса & Бар",
+            DurationMinutes = 120, AgeLimit = 18
+        };
+        var html = ContactRequestMessage.ToTelegramHtml(ContactRequestMessage.Build(booking, session, session.Game));
+        Assert.DoesNotContain("<b>", html);
+        Assert.Contains("&lt;b&gt;МЯУ&lt;/b&gt;", html);
+        Assert.Contains("Вика &amp; Ко", html);
+        Assert.Contains("Квиз &lt;Сумерки&gt;", html);
+        Assert.Contains("Киса &amp; Бар", html);
+    }
+
+    /// <summary>
+    /// Telegram trims captions at 1024 characters and would reject a broken tag: the block is cut before the limit,
+    /// the closing tag is always there.
+    /// </summary>
+    [Fact]
+    public void TelegramHtml_StaysWithinTheCaptionLimit()
+    {
+        var booking = new Booking
+        {
+            TeamName = new string('Я', 900), CustomerName = new string('А', 900), Phone = "+79934902720",
+            Quantity = 2, TicketPriceSnapshot = 700m
+        };
+        var html = ContactRequestMessage.ToTelegramHtml(ContactRequestMessage.Build(booking, Session, Session.Game));
+        Assert.True(html.Length <= 1024, $"the caption is {html.Length} characters");
+        Assert.EndsWith("</pre>", html);
+        Assert.Contains("…</pre>", html);
+        Assert.Equal(1, html.Split("<pre>").Length - 1);
+        Assert.Equal(1, html.Split("</pre>").Length - 1);
+    }
 }

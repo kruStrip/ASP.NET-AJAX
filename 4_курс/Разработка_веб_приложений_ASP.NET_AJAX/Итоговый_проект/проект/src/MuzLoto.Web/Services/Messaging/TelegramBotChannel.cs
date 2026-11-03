@@ -79,17 +79,28 @@ public sealed class TelegramBotChannel(
     private Task<HttpResponseMessage> SendCoreAsync(string token, string chatId, string? topic,
         OutgoingMessage message, CancellationToken ct)
     {
-        if (message.Booking.ReceiptKey is not { Length: > 0 } key) return SendTextAsync(token, chatId, topic, message.Text, ct);
+        if (message.Booking.ReceiptKey is not { Length: > 0 } key) return SendTextAsync(token, chatId, topic, message, ct);
         if (ThroughRelay) return SendFileByLinkAsync(token, chatId, topic, message, key, ct);
         return files.OpenReceipt(message.Booking) is { } file
-            ? SendFileAsync(token, chatId, topic, file, message.Text, ct)
-            : SendTextAsync(token, chatId, topic, message.Text, ct);
+            ? SendFileAsync(token, chatId, topic, file, message, ct)
+            : SendTextAsync(token, chatId, topic, message, ct);
     }
 
-    private Task<HttpResponseMessage> SendTextAsync(string token, string chatId, string? topic, string text, CancellationToken ct)
+    /// <summary>
+    /// The text to show. «Связаться с клиентом» is sent as HTML with the customer's block in &lt;pre&gt;, so Telegram
+    /// draws a «Copy» button next to it (decision of 2026-11-03); everything else stays plain text.
+    /// </summary>
+    private static bool AsHtml(OutgoingMessage message) => message.Kind == OutgoingMessageKind.ContactRequest;
+
+    private static string TelegramText(OutgoingMessage message) =>
+        AsHtml(message) ? ContactRequestMessage.ToTelegramHtml(message.Text) : message.Text;
+
+    private Task<HttpResponseMessage> SendTextAsync(string token, string chatId, string? topic,
+        OutgoingMessage message, CancellationToken ct)
     {
-        object body = WithTopic(new Dictionary<string, object?> { ["chat_id"] = chatId, ["text"] = text }, topic);
-        return Http.PostAsJsonAsync($"{ApiBaseUrl}/bot{token}/sendMessage", body, ct);
+        var body = new Dictionary<string, object?> { ["chat_id"] = chatId, ["text"] = TelegramText(message) };
+        if (AsHtml(message)) body["parse_mode"] = "HTML";
+        return Http.PostAsJsonAsync($"{ApiBaseUrl}/bot{token}/sendMessage", WithTopic(body, topic), ct);
     }
 
     /// <summary>
@@ -103,25 +114,31 @@ public sealed class TelegramBotChannel(
         {
             ["token"] = token,
             ["chatId"] = chatId,
-            ["caption"] = Caption(message.Text),
+            ["caption"] = Caption(message),
             ["fileName"] = Path.GetFileName(receiptKey),
             ["fileUrl"] = links.Create(message.Booking.Id, receiptKey)
         };
+        if (AsHtml(message)) body["parseMode"] = "HTML";
         if (topic is { Length: > 0 }) body["topicId"] = topic;
         return Http.PostAsJsonAsync($"{ApiBaseUrl}/send-file", body, ct);
     }
 
     /// <summary>Telegram rejects captions longer than 1024 characters; the text is what a manager forwards, keep the start.</summary>
-    private static string Caption(string caption) => caption.Length > 1024 ? caption[..1023] + "…" : caption;
+    private static string Caption(OutgoingMessage message)
+    {
+        var caption = TelegramText(message);
+        return caption.Length > 1024 ? caption[..1023] + "…" : caption;
+    }
 
     private async Task<HttpResponseMessage> SendFileAsync(string token, string chatId, string? topic,
-        (string Path, string ContentType) file, string caption, CancellationToken ct)
+        (string Path, string ContentType) file, OutgoingMessage message, CancellationToken ct)
     {
         var isPhoto = file.ContentType != "application/pdf";
         using var form = new MultipartFormDataContent();
         AddField(form, "chat_id", chatId);
         if (topic is { Length: > 0 }) AddField(form, "message_thread_id", topic);
-        AddField(form, "caption", Caption(caption));
+        AddField(form, "caption", Caption(message));
+        if (AsHtml(message)) AddField(form, "parse_mode", "HTML");
         var content = new StreamContent(File.OpenRead(file.Path));
         content.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType);
         form.Add(content, isPhoto ? "photo" : "document", Path.GetFileName(file.Path));

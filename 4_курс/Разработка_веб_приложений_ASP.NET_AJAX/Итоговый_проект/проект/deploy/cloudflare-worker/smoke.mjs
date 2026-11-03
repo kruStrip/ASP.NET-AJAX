@@ -135,7 +135,8 @@ res = await sendFile({
   token: "123:ABC",
   chatId: "-100123",
   topicId: "2",
-  caption: "Номер клиента: +79140000000",
+  caption: "Номер клиента: +79140000000\n<pre>Здравствуйте!</pre>",
+  parseMode: "HTML",
   fileName: "abc-receipt.png",
   fileUrl: "https://receipts.test/receipts/abc.png?t=signed",
 });
@@ -149,15 +150,20 @@ check("send-file keeps the topic", fileBody.includes('name="message_thread_id"')
 check("send-file keeps the caption and the file name",
   fileCall.body.includes(Buffer.from("Номер клиента: +79140000000")) && fileBody.includes('filename="abc-receipt.png"'),
   `${fileCall.body.length} bytes`);
+check("send-file forwards the HTML parse mode (the <pre> copy block)",
+  fileBody.includes('name="parse_mode"') && fileBody.includes("HTML") && fileCall.body.includes(Buffer.from("<pre>")),
+  `${fileCall.body.length} bytes`);
 check("send-file downloads exactly the receipt bytes",
   fileCall.body.includes(fileStub.bytes), `${fileCall.body.length} bytes`);
 
-// A PDF receipt goes as a document, not as a photo.
+// Without parseMode the caption stays plain: an unescaped «<» must not be read as HTML by Telegram.
 fileStub.bytes = Buffer.from("%PDF-1.4");
 fileStub.type = "application/pdf";
 res = await sendFile({ token: "123:ABC", chatId: "-100123", fileName: "abc.pdf", fileUrl: "https://receipts.test/abc.pdf" });
 await res.text();
 check("send-file sends a PDF as a document", seen.at(-1).url === "/bot123:ABC/sendDocument", seen.at(-1).url);
+check("send-file sends no parse mode when the site did not ask for HTML",
+  !seen.at(-1).body.toString("latin1").includes('name="parse_mode"'), `${seen.at(-1).body.length} bytes`);
 
 // Another host than the site's is refused: the relay must not fetch arbitrary URLs.
 const before = seen.length;
