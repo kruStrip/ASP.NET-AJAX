@@ -4,11 +4,17 @@ using MuzLoto.Web.Domain;
 
 namespace MuzLoto.Web.Services;
 
+/// <summary>Opens a booking's uploaded receipt for sending; kept small so the Telegram bot channel is testable.</summary>
+public interface IReceiptFiles
+{
+    (string Path, string ContentType)? OpenReceipt(Booking booking);
+}
+
 /// <summary>
 /// Session cover storage. Files live outside wwwroot (Storage:ImagesPath, default App_Data/images) and are
 /// bound to the stable session ID, so changing the date never detaches a photo. Replacing bumps Version.
 /// </summary>
-public sealed class CoverImages(AppDbContext db, IConfiguration config, IWebHostEnvironment env)
+public sealed class CoverImages(AppDbContext db, IConfiguration config, IWebHostEnvironment env) : IReceiptFiles
 {
     public const long MaxBytes = 5 * 1024 * 1024;
 

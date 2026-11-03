@@ -38,12 +38,13 @@ public sealed class PublicBookingFormTests(AppFactory app)
     private static string NewPhone() => "8 (9" + Random.Shared.Next(10, 99) + ") " + Random.Shared.Next(100, 999) + "-" + Random.Shared.Next(10, 99) + "-" + Random.Shared.Next(10, 99);
     private static string Normalized(string phone) => ContactRules.NormalizePhone(phone)!;
 
-    private static Dictionary<string, string> Fields(GameSession s, Guid? key = null, string quantity = "3", string telegram = "t.me/team_cat",
-        bool consent = true, string? phone = null) => new()
+    private static Dictionary<string, string> Fields(GameSession s, Guid? key = null, string quantity = "3",
+        bool consent = true, string? phone = null, string? telegram = null) => new()
     {
         ["Input.SessionId"] = s.Id.ToString(), ["Input.SubmissionKey"] = (key ?? Guid.NewGuid()).ToString(),
         ["Input.Quantity"] = quantity, ["Input.Name"] = "ТЕСТ", ["Input.Phone"] = phone ?? NewPhone(),
-        ["Input.Telegram"] = telegram, ["Input.Team"] = "МЯУ " + Guid.NewGuid().ToString("N")[..4],
+        ["Input.Telegram"] = telegram ?? "",
+        ["Input.Team"] = "МЯУ " + Guid.NewGuid().ToString("N")[..4],
         ["Input.AcceptPrivacy"] = consent ? "true" : "false"
     };
 
@@ -71,11 +72,32 @@ public sealed class PublicBookingFormTests(AppFactory app)
         Assert.Contains("Белла снова не может выбрать", html);
         Assert.Contains("Киса Бар, Светланская 21", html);
         Assert.Contains("2 часа", html);
-        Assert.Contains("placeholder=\"Например: @username. Не указывайте почту или ссылку.\"", html);  // whole hint, intact markup
-        Assert.DoesNotContain("href=\"Например", html);
+        Assert.Contains("Telegram", html);                        // the customer can leave a nickname for Telegram
+        Assert.Contains("Input_Telegram", html);
         Assert.Contains("Кол-во билетов доступных для покупки: <strong>3</strong>", html);
         var quantitySelect = Regex.Match(html, "<select[^>]*Input_Quantity.*?</select>", RegexOptions.Singleline).Value;
         Assert.Equal(["", "1", "2", "3"], Regex.Matches(quantitySelect, "<option value=\"(\\d*)\"").Select(m => m.Groups[1].Value));
+    }
+
+    [Fact]
+    public async Task TelegramNickname_IsOptional_AndSavedNormalised()
+    {
+        var s = await SessionAsync();
+        var client = app.Browser();
+        var key = Guid.NewGuid();
+        var phone = NewPhone();
+
+        var review = await PostAsync(client, s, "Review", Fields(s, key, phone: phone, telegram: "https://t.me/team_msg"));
+        Assert.Equal(HttpStatusCode.OK, review.StatusCode);
+        Assert.Contains("@team_msg", WebUtility.HtmlDecode(await review.Content.ReadAsStringAsync()));
+
+        var submit = await PostAsync(client, s, "Submit", Fields(s, key, phone: phone, telegram: "t.me/team_msg/"));
+        Assert.Equal(HttpStatusCode.Redirect, submit.StatusCode);
+        Assert.Equal("@team_msg", Assert.Single(await BookingsAsync(s.Id)).Telegram);   // a link or @nick → one form
+
+        var bad = await PostAsync(app.Browser(), s, "Submit", Fields(s, phone: NewPhone(), telegram: "не ник"));
+        Assert.Equal(HttpStatusCode.OK, bad.StatusCode);                                // not saved, form returned
+        Assert.Contains("Введите ник в Telegram", WebUtility.HtmlDecode(await bad.Content.ReadAsStringAsync()));
     }
 
     [Fact]
@@ -101,7 +123,7 @@ public sealed class PublicBookingFormTests(AppFactory app)
         Assert.Equal(HttpStatusCode.Redirect, again.StatusCode);
 
         var booking = Assert.Single(await BookingsAsync(s.Id));
-        Assert.Equal((3, Normalized(phone), "@team_cat", 700m), (booking.Quantity, booking.Phone, booking.Telegram, booking.TicketPriceSnapshot));
+        Assert.Equal((3, Normalized(phone), (string?)null, 700m), (booking.Quantity, booking.Phone, booking.Telegram, booking.TicketPriceSnapshot));
         Assert.NotNull(booking.PrivacyConsentAt);
         using (var scope = app.Services.CreateScope())
         {
@@ -116,19 +138,18 @@ public sealed class PublicBookingFormTests(AppFactory app)
         Assert.Contains(Normalized(phone), mine);
         Assert.Contains(booking.TeamName, mine);
         Assert.Contains("загрузите чек", mine);
+        Assert.DoesNotContain("Задать свой пароль", mine);                    // customers cannot change the password
+        Assert.DoesNotContain("Сменить пароль", mine);
         Assert.DoesNotContain("<code>", WebUtility.HtmlDecode(await client.GetStringAsync("/bookings/mine")));  // …and only once
 
-        // The phone and the generated password log in (typed in any format); a customer lands in the account.
+        // The temp account can log in, but a customer cannot change the password: only staff can.
         var other = app.Browser();
         var login = await AppFactory.PostFormAsync(other, "/account/login", new() { ["Input.Login"] = phone.Replace(" ", ""), ["Input.Password"] = password });
         Assert.Equal("/bookings/mine", login.Headers.Location?.OriginalString);
-
-        // The customer sets an own password: 6+ characters with a digit is enough for customers.
-        var changed = await AppFactory.PostFormAsync(other, "/account/change-password", new()
-        { ["Input.CurrentPassword"] = password, ["Input.NewPassword"] = "kotik7", ["Input.ConfirmPassword"] = "kotik7" });
-        Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
-        var relogin = await AppFactory.PostFormAsync(app.Browser(), "/account/login", new() { ["Input.Login"] = Normalized(phone), ["Input.Password"] = "kotik7" });
-        Assert.Equal(HttpStatusCode.Redirect, relogin.StatusCode);
+        var change = await other.GetAsync("/account/change-password");
+        Assert.Contains("/account/denied", change.Headers.Location?.OriginalString);   // staff-only page
+        var unchanged = await AppFactory.PostFormAsync(app.Browser(), "/account/login", new() { ["Input.Login"] = Normalized(phone), ["Input.Password"] = password });
+        Assert.Equal("/bookings/mine", unchanged.Headers.Location?.OriginalString);
     }
 
     [Fact]
@@ -184,6 +205,19 @@ public sealed class PublicBookingFormTests(AppFactory app)
         Assert.Equal(HttpStatusCode.Redirect, (await UploadReceiptAsync(client, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, Png)).StatusCode);
         Assert.Single(Directory.GetFiles(Path.Combine(AppFactory.ImagesPath, "receipts"), $"{booking.Id:N}-*"));  // replaced, not piled up
 
+        // The managers' group gets one notification with the latest receipt and a link to the confirmation card.
+        using (var scope = app.Services.CreateScope())
+        {
+            var notice = Assert.Single(await scope.ServiceProvider.GetRequiredService<AppDbContext>().OutgoingMessages.AsNoTracking()
+                .Where(x => x.BookingId == booking.Id).ToListAsync());
+            Assert.Equal((MessageChannel.TelegramBot, OutgoingMessageKind.ReceiptNotification, OutgoingMessageStatus.Pending),
+                (notice.Channel, notice.Kind, notice.Status));
+            var text = notice.Text.Replace('\u00A0', ' ');
+            foreach (var line in new[] { "Номер клиента: " + booking.Phone, "Имя клиента: ТЕСТ", "Сумма к оплате: 2 100 ₽",
+                         $"/bookings/pending#booking-{booking.Id:N}" })
+                Assert.Contains(line, text);
+        }
+
         var admin = await app.SignedInAsync(await app.CreateUserAsync("Admin"));
         var pending = WebUtility.HtmlDecode(await admin.GetStringAsync("/bookings/pending?q=" + Uri.EscapeDataString(booking.TeamName)));
         Assert.Contains("Чек клиента", pending);
@@ -197,6 +231,19 @@ public sealed class PublicBookingFormTests(AppFactory app)
         var outsider = await app.SignedInAsync(await app.CreateUserAsync("Manager"));                         // not assigned to the game
         Assert.Equal(HttpStatusCode.NotFound, (await outsider.GetAsync($"/receipts/{booking.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await UploadReceiptAsync(otherClient, "/bookings/mine", "/bookings/mine?handler=Receipt", booking.Id, Png)).StatusCode);
+
+        // The signed link in the confirmation message works without signing in, but only with its token.
+        var key = Assert.Single(await BookingsAsync(s.Id)).ReceiptKey!;
+        var signed = app.Services.GetRequiredService<ReceiptLinks>().Create(booking.Id, key);
+        Assert.True(Uri.TryCreate(signed, UriKind.Absolute, out var absolute));
+        var anonymous = app.Browser();
+        Assert.Equal(Png, await (await anonymous.GetAsync(absolute!.PathAndQuery)).Content.ReadAsByteArrayAsync());
+        Assert.Equal(HttpStatusCode.NotFound,                                          // no token
+            (await anonymous.GetAsync($"/receipts/{booking.Id}/{Path.GetFileName(key)}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,                                          // forged token
+            (await anonymous.GetAsync(absolute.PathAndQuery.Replace("?t=", "?t=x"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,                                          // another file name
+            (await anonymous.GetAsync(absolute.PathAndQuery.Replace(Path.GetFileName(key), "other.png"))).StatusCode);
     }
 
     [Fact]
@@ -246,8 +293,6 @@ public sealed class PublicBookingFormTests(AppFactory app)
 
         var noConsent = WebUtility.HtmlDecode(await (await PostAsync(client, s, "Submit", Fields(s, consent: false))).Content.ReadAsStringAsync());
         Assert.Contains("Нужно согласие на обработку персональных данных.", noConsent);
-        var email = WebUtility.HtmlDecode(await (await PostAsync(client, s, "Review", Fields(s, telegram: "me@mail.ru", quantity: "1"))).Content.ReadAsStringAsync());
-        Assert.Contains("Укажите ник в формате @username", email);
         var tooMany = WebUtility.HtmlDecode(await (await PostAsync(client, s, "Submit", Fields(s, quantity: "3"))).Content.ReadAsStringAsync());
         Assert.Contains("Можно взять от 1 до 2 билетов.", tooMany);
         Assert.Empty(await BookingsAsync(s.Id));
@@ -300,5 +345,27 @@ public sealed class PublicBookingFormTests(AppFactory app)
         var payHtml = WebUtility.HtmlDecode(await client.GetStringAsync(submit.Headers.Location!.OriginalString));
         Assert.Contains(text, payHtml.Replace("\r\n", "\n"));
         Assert.Contains("src=\"/oplata/qr?v=", payHtml);
+    }
+
+    [Fact]
+    public async Task WebFormSubmission_QueuesNoCustomerMessage_AndTheAccountShowsPayment()
+    {
+        var s = await SessionAsync();
+        var client = app.Browser();
+        var key = Guid.NewGuid();
+        var phone = NewPhone();
+        Assert.Equal(HttpStatusCode.Redirect, (await PostAsync(client, s, "Submit", Fields(s, key, phone: phone))).StatusCode);
+        // A double click / resent form does not create a second booking.
+        Assert.Equal(HttpStatusCode.Redirect, (await PostAsync(client, s, "Submit", Fields(s, key, phone: phone))).StatusCode);
+
+        var booking = Assert.Single(await BookingsAsync(s.Id));
+        using (var scope = app.Services.CreateScope())
+            Assert.Empty(await scope.ServiceProvider.GetRequiredService<AppDbContext>().OutgoingMessages.AsNoTracking()
+                .Where(x => x.BookingId == booking.Id).ToListAsync());
+
+        // Payment instructions and the receipt upload live in the personal account (no Telegram message).
+        var mine = WebUtility.HtmlDecode(await client.GetStringAsync("/bookings/mine"));
+        Assert.Contains("2 100", mine.Replace('\u00A0', ' '));
+        Assert.Contains("загрузите чек", mine);
     }
 }

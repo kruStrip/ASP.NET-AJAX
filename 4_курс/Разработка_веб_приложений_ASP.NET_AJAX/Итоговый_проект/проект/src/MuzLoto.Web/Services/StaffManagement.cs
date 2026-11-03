@@ -35,6 +35,14 @@ public sealed class StaffManagement(AppDbContext db, UserManager<AppUser> users,
         };
         RequireSuccess(await users.CreateAsync(user, initialPassword), "Создание сотрудника");
         RequireSuccess(await users.AddToRoleAsync(user, role), "Назначение роли");
+        if (role == "Manager" && (await users.GetUsersInRoleAsync("Manager")).Count == 1)
+        {
+            // The first manager becomes the default for games that already exist without one.
+            var unassigned = await db.GameSessions.Where(s => !s.Staff.Any()).Select(s => s.Id).ToListAsync(ct);
+            db.EventStaffAssignments.AddRange(unassigned.Select(id =>
+                new EventStaffAssignment { GameSessionId = id, UserId = user.Id }));
+            await db.SaveChangesAsync(ct);
+        }
         await tx.CommitAsync(ct);
         return user;
     }
@@ -72,6 +80,58 @@ public sealed class StaffManagement(AppDbContext db, UserManager<AppUser> users,
         await tx.CommitAsync(ct);
         // Live SignalR connections were authorised under the old role: drop them from every game group now.
         await revoker.RevokeAsync(targetId);
+    }
+
+    /// <summary>Deletes an account: paid history stays, game assignments go away with the account.</summary>
+    public async Task DeleteAsync(string targetId, string actorId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(targetId)) throw new BusinessException("Аккаунт не найден.", 404);
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var target = await users.FindByIdAsync(targetId)
+            ?? throw new BusinessException("Аккаунт не найден.", 404);
+        if (targetId == actorId)
+            throw new BusinessException("Нельзя удалить собственный аккаунт.", 409);
+        if (string.Equals(target.Email, config["BootstrapAdmin:Email"], StringComparison.OrdinalIgnoreCase))
+            throw new BusinessException("Основную учётную запись администратора нельзя удалить.", 409);
+        if (await users.IsInRoleAsync(target, "Admin"))
+        {
+            var admins = await users.GetUsersInRoleAsync("Admin");
+            if (admins.Count <= 1)
+                throw new BusinessException("Нельзя удалить последнего администратора.", 409);
+        }
+        // Bookings keep their history: OwnerUserId is set to null, only the account itself disappears.
+        RequireSuccess(await users.DeleteAsync(target), "Удаление аккаунта");
+        await tx.CommitAsync(ct);
+        await revoker.RevokeAsync(targetId);
+    }
+
+    /// <summary>Ends every sign-in of the account: a new security stamp invalidates cookies and JWTs on all devices.</summary>
+    public async Task EndSessionsAsync(string targetId)
+    {
+        if (string.IsNullOrWhiteSpace(targetId)) throw new BusinessException("Аккаунт не найден.", 404);
+        var target = await users.FindByIdAsync(targetId)
+            ?? throw new BusinessException("Аккаунт не найден.", 404);
+        RequireSuccess(await users.UpdateSecurityStampAsync(target), "Завершение сессий");
+        await revoker.RevokeAsync(targetId);
+    }
+
+    /// <summary>The first Manager account in the system (earliest created) — the default assignee for new games.</summary>
+    public async Task<AppUser?> FindDefaultManagerAsync(CancellationToken ct = default)
+    {
+        var managers = await users.GetUsersInRoleAsync("Manager");
+        return managers
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.UserName, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Gives a game without any manager its default assignee. Existing assignments are never touched.</summary>
+    public async Task AssignDefaultManagerAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        if (await db.EventStaffAssignments.AnyAsync(x => x.GameSessionId == sessionId, ct)) return;
+        if (await FindDefaultManagerAsync(ct) is not { } manager) return;
+        db.EventStaffAssignments.Add(new EventStaffAssignment { GameSessionId = sessionId, UserId = manager.Id });
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task AssignManagerAsync(Guid sessionId, string managerId, CancellationToken ct = default)

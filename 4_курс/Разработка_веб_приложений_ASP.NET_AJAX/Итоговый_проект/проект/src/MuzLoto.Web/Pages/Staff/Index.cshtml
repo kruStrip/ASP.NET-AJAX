@@ -3,6 +3,18 @@
 @{ ViewData["Title"] = "Сотрудники"; }
 <div class="page-heading"><div><div class="eyebrow">Доступ к системе</div><h1>Сотрудники</h1>
 <p class="muted">Только администратор создаёт аккаунты и меняет роли. Менеджер видит только назначенные игры.</p></div></div>
+@* Roles differ by what the sidebar shows and by which games are visible; spell it out once instead of in every card. *@
+<section class="panel role-guide">
+<h2>Что может каждая роль</h2>
+<dl>
+<div><dt>Администратор</dt>
+<dd>Всё: игры и даты, подтверждение оплаты, возвраты, отчёт, реквизиты на «Оплате», аккаунты сотрудников, роли, сброс паролей и удаление аккаунтов.</dd></div>
+<div><dt>Менеджер</dt>
+<dd>Только игры, на которые его назначили: их заявки и чеки, подтверждение оплаты, завершение игры. Не видит отчёт, возвраты, реквизиты и сотрудников, не создаёт и не редактирует игры.</dd></div>
+<div><dt>Пользователь</dt>
+<dd>Клиент: свои заявки в «Мои заявки», загрузка чека, смена пароля. Панель сотрудников ему недоступна.</dd></div>
+</dl>
+</section>
 @* The list comes first; the form opens with «Добавить сотрудника» (and stays open after a validation error). *@
 <details class="add-staff" open="@(ViewData.ModelState.ErrorCount > 0)">
 <summary class="button">Добавить сотрудника</summary>
@@ -35,11 +47,21 @@
 <option value="User" selected="@(employee.Role == "User")">Пользователь</option>
 </select><button class="button secondary" type="submit">Сохранить роль</button>
 </form>
-@if (employee.Role == "User")
+<div class="account-actions">
+@if (employee.Id == Model.CurrentUserId)
 {
-<form method="post" asp-page-handler="ResetPassword" data-confirm="Сгенерировать клиенту новый пароль? Старый перестанет подходить.">
+<p class="muted">Свой пароль меняется в разделе «Сменить пароль».</p>
+}
+else
+{
+<form method="post" asp-page-handler="ResetPassword" data-confirm="Сгенерировать новый пароль для @employee.Email? Старый перестанет подходить, все сессии аккаунта завершатся.">
 <input type="hidden" name="userId" value="@employee.Id" /><button class="button secondary" type="submit">Сбросить пароль</button></form>
 }
+<form method="post" asp-page-handler="EndSessions" data-confirm="Завершить все сессии аккаунта @employee.Email на всех устройствах? На каждом устройстве потребуется войти заново.">
+<input type="hidden" name="userId" value="@employee.Id" /><button class="button secondary" type="submit">Завершить сессии</button></form>
+<form method="post" asp-page-handler="Delete" data-confirm="Удалить аккаунт @employee.Email? Войти им больше нельзя. Заявки и оплаты останутся в истории.">
+<input type="hidden" name="userId" value="@employee.Id" /><button class="button danger" type="submit">Удалить аккаунт</button></form>
+</div>
 </article>
 }
 </div></section>

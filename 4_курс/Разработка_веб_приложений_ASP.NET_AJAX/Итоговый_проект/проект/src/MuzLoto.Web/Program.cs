@@ -168,8 +168,9 @@ builder.Services.AddScoped<CoverImages>();
 builder.Services.AddScoped<FormDesignerWebhook>();
 builder.Services.AddScoped<PublicSchedule>();
 builder.Services.AddScoped<ClientAccounts>();
-// Messages to customers after a confirmed payment go through the Wazzup cloud service: the company connects
-// its WhatsApp number and Telegram account in the Wazzup interface, the site only holds the Wazzup API key.
+// Messages to customers (confirmation after a confirmed payment) go through the Wazzup cloud service: the
+// company connects its WhatsApp number and Telegram account in the Wazzup interface, the site only holds the
+// Wazzup API key. Managers' receipt notifications go to a Telegram group topic through a bot of their own.
 builder.Services.AddHttpClient("Wazzup", http =>
 {
     http.BaseAddress = new Uri("https://api.wazzup24.com/");
@@ -177,15 +178,22 @@ builder.Services.AddHttpClient("Wazzup", http =>
         new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", builder.Configuration["Wazzup:ApiKey"]);
     http.Timeout = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddHttpClient("TelegramBot", http => http.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp =>
     new MuzLoto.Web.Services.Messaging.WazzupChannel(
         sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(), builder.Configuration, MessageChannel.Telegram));
 builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp =>
     new MuzLoto.Web.Services.Messaging.WazzupChannel(
         sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(), builder.Configuration, MessageChannel.WhatsApp));
+// The bot reads the receipt from local storage, so it needs the scoped file service.
+builder.Services.AddScoped<MuzLoto.Web.Services.Messaging.IMessengerChannel>(sp =>
+    new MuzLoto.Web.Services.Messaging.TelegramBotChannel(
+        sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(), builder.Configuration,
+        sp.GetRequiredService<MuzLoto.Web.Services.CoverImages>()));
 builder.Services.AddSingleton<MuzLoto.Web.Services.Messaging.MessageDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MuzLoto.Web.Services.Messaging.MessageDispatcher>());
 builder.Services.AddSingleton<PaymentLinks>();
+builder.Services.AddSingleton<ReceiptLinks>();
 
 // The public booking form is the only anonymous write: limit POSTs per client address against spam.
 var formPostsPerTenMinutes = builder.Configuration.GetValue("RateLimit:BookingFormPostsPerTenMinutes", 30);
@@ -269,6 +277,19 @@ app.MapGet("/receipts/{id:guid}", async (Guid id, AppDbContext db, CoverImages f
     http.Response.Headers.CacheControl = "private, no-store";
     return Results.File(file.Path, file.ContentType);
 }).RequireAuthorization();
+// The same receipt through a signed, time-limited link: the confirmation message duplicates the customer's own
+// receipt, and the messenger service fetches the file by URL. The token is bound to the booking and expires.
+app.MapGet("/receipts/{id:guid}/{name}", async (Guid id, string name, string? t, AppDbContext db, CoverImages files,
+    ReceiptLinks links, HttpContext http, CancellationToken ct) =>
+{
+    if (links.Read(t) != id) return Results.NotFound();
+    var booking = await db.Bookings.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
+    if (booking?.ReceiptKey is not { } key || !string.Equals(Path.GetFileName(key), name, StringComparison.Ordinal))
+        return Results.NotFound();
+    if (files.OpenReceipt(booking) is not { } file) return Results.NotFound();
+    http.Response.Headers.CacheControl = "private, no-store";
+    return Results.File(file.Path, file.ContentType);
+}).AllowAnonymous();
 // QR code on the payment screen; revalidated so a replaced code shows at once.
 app.MapGet("/oplata/qr", async (CoverImages images, HttpContext http, CancellationToken ct) =>
 {

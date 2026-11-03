@@ -39,9 +39,9 @@ public sealed class MessageDispatcher(IServiceScopeFactory scopes, IConfiguratio
         var ready = new Dictionary<MessageChannel, bool>();
         var sent = 0;
         // Batches until nothing is due: every handled message is either finished or rescheduled into the future.
-        while (await db.OutgoingMessages.Include(x => x.Booking)
+        while (await db.OutgoingMessages.Include(x => x.Booking).ThenInclude(x => x.GameSession).ThenInclude(x => x.Game)
                    .Where(x => x.Status == OutgoingMessageStatus.Pending && x.NextAttemptAt <= started)
-                   .OrderBy(x => x.CreatedAt).Take(20).ToListAsync(ct) is { Count: > 0 } due)
+                   .OrderBy(x => x.CreatedAt).ThenBy(x => x.Kind).Take(20).ToListAsync(ct) is { Count: > 0 } due)
         foreach (var message in due)
         {
             var now = DateTimeOffset.UtcNow;
@@ -59,6 +59,9 @@ public sealed class MessageDispatcher(IServiceScopeFactory scopes, IConfiguratio
                 {
                     message.Status = OutgoingMessageStatus.Failed;
                     message.LastError = "Мессенджер так и не был подключён — сообщение не отправлено.";
+                    await db.SaveChangesAsync(ct);
+                    await QueueContactRequestAsync(db, message, now, ct);
+                    continue;
                 }
                 else
                 {
@@ -70,7 +73,7 @@ public sealed class MessageDispatcher(IServiceScopeFactory scopes, IConfiguratio
             }
             if (sent > 0) await Task.Delay(Pause, ct);
             SendOutcome outcome;
-            try { outcome = await channel.SendAsync(message.Booking, message.Text, ct); }
+            try { outcome = await channel.SendAsync(message, ct); }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogWarning(ex, "Sending {Channel} message {Id} failed", message.Channel, message.Id);
@@ -79,8 +82,39 @@ public sealed class MessageDispatcher(IServiceScopeFactory scopes, IConfiguratio
             Apply(message, outcome, DateTimeOffset.UtcNow);
             if (outcome.Status == OutgoingMessageStatus.Sent) sent++;
             await db.SaveChangesAsync(ct);
+            await QueueContactRequestAsync(db, message, DateTimeOffset.UtcNow, ct);
         }
         return sent;
+    }
+
+    /// <summary>
+    /// The customer's confirmation could not be delivered (no messenger, or all retries used up): the managers get
+    /// their own message in the group topic «Связаться с клиентом» with the customer's contacts, the text to forward
+    /// and the receipt, so they can write to the customer by hand. Queued once per booking.
+    /// </summary>
+    private async Task QueueContactRequestAsync(AppDbContext db, OutgoingMessage message, DateTimeOffset now, CancellationToken ct)
+    {
+        if (message.Kind != OutgoingMessageKind.Confirmation) return;
+        if (message.Status is not (OutgoingMessageStatus.Failed or OutgoingMessageStatus.Skipped)) return;
+        // Another confirmation is delivered or still on its way: the customer is not left without a message.
+        var stillComing = await db.OutgoingMessages.AnyAsync(x =>
+            x.BookingId == message.BookingId && x.Kind == OutgoingMessageKind.Confirmation && x.Id != message.Id
+            && (x.Status == OutgoingMessageStatus.Pending || x.Status == OutgoingMessageStatus.Sent), ct);
+        if (stillComing) return;
+        var exists = await db.OutgoingMessages.AnyAsync(x => x.BookingId == message.BookingId
+            && x.Channel == MessageChannel.TelegramBot && x.Kind == OutgoingMessageKind.ContactRequest, ct);
+        if (exists) return;
+        var booking = message.Booking;
+        var session = booking?.GameSession;
+        if (booking is null || session?.Game is null) return;
+        db.OutgoingMessages.Add(new OutgoingMessage
+        {
+            BookingId = booking.Id, Channel = MessageChannel.TelegramBot, Kind = OutgoingMessageKind.ContactRequest,
+            Text = ContactRequestMessage.Build(booking, session, session.Game, 1024),
+            CreatedAt = now, NextAttemptAt = now
+        });
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Confirmation for booking {BookingId} failed: managers notified to contact the customer", booking.Id);
     }
 
     public static void Apply(OutgoingMessage message, SendOutcome outcome, DateTimeOffset now)

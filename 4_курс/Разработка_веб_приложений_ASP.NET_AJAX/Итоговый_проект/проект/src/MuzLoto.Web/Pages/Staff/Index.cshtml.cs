@@ -16,6 +16,8 @@ public sealed class IndexModel(UserManager<AppUser> users, AppDbContext db, Staf
 {
     public sealed record StaffRow(string Id, string Email, string FullName, string Role, int AssignedGames);
     public List<StaffRow> Employees { get; private set; } = [];
+    /// <summary>The signed-in administrator: their own card has no «Сбросить пароль» — they use «Сменить пароль».</summary>
+    public string CurrentUserId { get; private set; } = string.Empty;
 
     [BindProperty] public CreateInput Input { get; set; } = new();
     public sealed class CreateInput
@@ -58,18 +60,44 @@ public sealed class IndexModel(UserManager<AppUser> users, AppDbContext db, Staf
         return RedirectToPage();
     }
 
-    /// <summary>A customer forgot the password: a new one is generated and shown to the admin once, who passes it on.</summary>
+    /// <summary>A password was forgotten: a new one is generated and shown to the admin once, who passes it on.</summary>
     public async Task<IActionResult> OnPostResetPasswordAsync(string userId, [FromServices] ClientAccounts accounts)
     {
         var user = await users.FindByIdAsync(userId);
         if (user is null) return NotFound();
-        if (await users.IsInRoleAsync(user, "Admin") || await users.IsInRoleAsync(user, "Manager"))
+        // Resetting your own password here would end your session before you could read the new one.
+        if (userId == User.FindFirstValue(ClaimTypes.NameIdentifier))
         {
-            TempData["Error"] = "Пароль сотрудника не сбрасывается здесь: сотрудник меняет его сам в «Сменить пароль».";
+            TempData["Error"] = "Свой пароль меняйте сами в «Сменить пароль»: пароль, выданный здесь, вы не увидите — текущая сессия сразу завершится.";
             return RedirectToPage();
         }
         var password = await accounts.ResetPasswordAsync(user);
-        TempData["Notice"] = $"Новый пароль для {user.UserName}: {password} — передайте его клиенту. Клиент может сменить его в «Сменить пароль».";
+        var who = await users.IsInRoleAsync(user, "User") ? "клиенту" : "сотруднику";
+        TempData["Notice"] = $"Новый пароль для {user.UserName}: {password} — передайте его {who}. Старые сессии завершены, новый пароль можно сменить в «Сменить пароль».";
+        return RedirectToPage();
+    }
+
+    /// <summary>«Завершить сессии»: the account stays, but every device has to sign in again.</summary>
+    public async Task<IActionResult> OnPostEndSessionsAsync(string userId)
+    {
+        try
+        {
+            await management.EndSessionsAsync(userId);
+            TempData["Notice"] = "Все сессии аккаунта завершены: на каждом устройстве нужно войти заново.";
+        }
+        catch (BusinessException ex) { TempData["Error"] = ex.Message; }
+        return RedirectToPage();
+    }
+
+    /// <summary>«Удалить аккаунт»: the account and its sign-ins are gone; bookings stay in the history without an owner.</summary>
+    public async Task<IActionResult> OnPostDeleteAsync(string userId, CancellationToken ct)
+    {
+        try
+        {
+            await management.DeleteAsync(userId, User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct);
+            TempData["Notice"] = "Аккаунт удалён. Заявки и оплаты сохранены в истории, сессии завершены.";
+        }
+        catch (BusinessException ex) { TempData["Error"] = ex.Message; }
         return RedirectToPage();
     }
 
@@ -80,6 +108,7 @@ public sealed class IndexModel(UserManager<AppUser> users, AppDbContext db, Staf
 
     private async Task LoadAsync(CancellationToken ct)
     {
+        CurrentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         var all = await users.Users.AsNoTracking().OrderBy(x => x.Email).Take(300).ToListAsync(ct);
         var counts = await db.EventStaffAssignments.AsNoTracking()
             .GroupBy(x => x.UserId).Select(g => new { Id = g.Key, Count = g.Count() })

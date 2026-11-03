@@ -55,7 +55,10 @@
         <span class="side-group">Аккаунт</span>
         <a asp-page="/Home" class="@Active("/Home")" aria-current="@Current("/Home")">Форма записи</a>
         <a asp-page="/Bookings/Mine" class="@Active("/Bookings/Mine", "/Bookings/Edit")" aria-current="@Current("/Bookings/Mine", "/Bookings/Edit")">Мои заявки</a>
-        <a asp-page="/Account/ChangePassword" class="@Active("/Account/ChangePassword")" aria-current="@Current("/Account/ChangePassword")">Сменить пароль</a>
+        @if (isStaff)
+        {
+            <a asp-page="/Account/ChangePassword" class="@Active("/Account/ChangePassword")" aria-current="@Current("/Account/ChangePassword")">Сменить пароль</a>
+        }
     </nav>
     <div class="side-user">
         @if (isStaff) { <span class="online" data-online-count hidden></span> }

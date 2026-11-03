@@ -166,6 +166,11 @@ namespace MuzLoto.Web.Data.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
@@ -175,6 +180,9 @@ namespace MuzLoto.Web.Data.Migrations
 
                     b.Property<string>("FullName")
                         .HasColumnType("text");
+
+                    b.Property<bool>("IsTemporaryCustomer")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");
@@ -507,8 +515,15 @@ namespace MuzLoto.Web.Data.Migrations
                     b.Property<int>("Channel")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ContentUri")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(500)
@@ -530,10 +545,10 @@ namespace MuzLoto.Web.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BookingId", "Channel")
-                        .IsUnique();
-
                     b.HasIndex("Status", "NextAttemptAt");
+
+                    b.HasIndex("BookingId", "Channel", "Kind")
+                        .IsUnique();
 
                     b.ToTable("OutgoingMessages");
                 });

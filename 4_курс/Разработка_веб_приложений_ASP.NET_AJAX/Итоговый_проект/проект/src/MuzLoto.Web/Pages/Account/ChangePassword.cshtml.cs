@@ -7,9 +7,15 @@ using MuzLoto.Web.Domain;
 
 namespace MuzLoto.Web.Pages.Account;
 
-[Authorize]
+/// <summary>
+/// Only staff can change a password here. Customer accounts are temporary (see <c>ClientAccounts</c>): they are
+/// deleted after the payment is confirmed, so there is nothing to protect with an own password.
+/// </summary>
+[Authorize(Roles = "Admin,Manager")]
 public sealed class ChangePasswordModel(UserManager<AppUser> users, SignInManager<AppUser> signIn) : PageModel
 {
+    public const int MinLength = 12;
+
     [BindProperty] public InputModel Input { get; set; } = new();
     public sealed class InputModel
     {
@@ -18,9 +24,6 @@ public sealed class ChangePasswordModel(UserManager<AppUser> users, SignInManage
         [Required(ErrorMessage = "Повторите новый пароль."), Compare(nameof(NewPassword), ErrorMessage = "Пароли не совпадают."), DataType(DataType.Password)]
         public string ConfirmPassword { get; set; } = "";
     }
-    /// <summary>Staff accounts need a long password; customers the same rule as at registration (6+, with a digit).</summary>
-    public bool IsStaff => User.IsInRole("Admin") || User.IsInRole("Manager");
-    public int MinLength => IsStaff ? 12 : 6;
 
     public IActionResult OnGet() => Page();
     public async Task<IActionResult> OnPostAsync()
@@ -41,6 +44,6 @@ public sealed class ChangePasswordModel(UserManager<AppUser> users, SignInManage
         }
         await signIn.RefreshSignInAsync(user);
         TempData["Notice"] = "Пароль изменён.";
-        return RedirectToPage(IsStaff ? "/Index" : "/Bookings/Mine");
+        return RedirectToPage("/Index");
     }
 }

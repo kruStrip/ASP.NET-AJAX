@@ -15,7 +15,8 @@ public sealed record WazzupState(string Status, string? Detail, IReadOnlyList<Wa
 }
 
 /// <summary>
-/// Sends «ваша игра подтверждена» through the Wazzup cloud service (api.wazzup24.com). The company connects its
+/// Sends customer messages («мы подтвердили вашу бронь» and the customer's own receipt copy) through the Wazzup
+/// cloud service (api.wazzup24.com). The company connects its
 /// WhatsApp number and Telegram account in the Wazzup web interface and scans the QR codes there; the site only
 /// calls the Wazzup API with an API key, so no messenger sessions or gateway containers live on our server.
 /// Configuration: Wazzup:ApiKey (required) and optional Wazzup:WhatsAppChannelId / Wazzup:TelegramChannelId —
@@ -112,7 +113,7 @@ public sealed class WazzupChannel(IHttpClientFactory httpFactory, IConfiguration
     /// <summary>Signed in to Wazzup and the channel is active: messages can go out now.</summary>
     public async Task<bool> IsReadyAsync(CancellationToken ct) => (await StateAsync(ct)).Status == "active";
 
-    public async Task<SendOutcome> SendAsync(Booking booking, string text, CancellationToken ct)
+    public async Task<SendOutcome> SendAsync(OutgoingMessage message, CancellationToken ct)
     {
         var state = await StateAsync(ct);
         switch (state.Status)
@@ -125,7 +126,7 @@ public sealed class WazzupChannel(IHttpClientFactory httpFactory, IConfiguration
             default: return SendOutcome.Failed($"Канал «{Name}» в Wazzup не активен ({state.Status}) — сообщение будет ждать.");
         }
         var channelId = state.Resolved!.ChannelId;
-        object body = BuildBody(booking, channelId, text);
+        object body = BuildBody(message.Booking, channelId, message);
         try
         {
             using var send = await Http.PostAsJsonAsync("v3/message", body, ct);
@@ -136,15 +137,26 @@ public sealed class WazzupChannel(IHttpClientFactory httpFactory, IConfiguration
         catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return SendOutcome.Failed("Сервис Wazzup не ответил за 30 секунд."); }
     }
 
-    private object BuildBody(Booking booking, string channelId, string text)
+    private object BuildBody(Booking booking, string channelId, OutgoingMessage message)
     {
+        var body = new Dictionary<string, object?> { ["channelId"] = channelId };
         if (channel is MessageChannel.WhatsApp)
-            return new { channelId, chatType = "whatsapp", chatId = Digits(booking.Phone), text };
-        // Telegram: the nickname from the booking form first; without it — the phone number.
-        var nick = booking.Telegram?.Trim().TrimStart('@');
-        return nick is { Length: > 0 }
-            ? new { channelId, chatType = "telegram", username = nick, text }
-            : new { channelId, chatType = "telegram", phone = Digits(booking.Phone), text };
+        {
+            body["chatType"] = "whatsapp";
+            body["chatId"] = Digits(booking.Phone);
+        }
+        else
+        {
+            body["chatType"] = "telegram";
+            // Telegram: the nickname from the booking form first; without it — the phone number.
+            var nick = booking.Telegram?.Trim().TrimStart('@');
+            if (nick is { Length: > 0 }) body["username"] = nick;
+            else body["phone"] = Digits(booking.Phone);
+        }
+        // Wazzup sends either text or a file, never both: an image message has contentUri instead of text.
+        if (message.ContentUri is { Length: > 0 } uri) body["contentUri"] = uri;
+        else body["text"] = message.Text;
+        return body;
     }
 
     private static async Task<SendOutcome> ExplainAsync(HttpResponseMessage send, CancellationToken ct)

@@ -9,7 +9,7 @@ using MuzLoto.Web.Services;
 namespace MuzLoto.Web.Pages;
 
 /// <summary>Payment screen after «К оплате»: what was booked, how much to pay and how (set by an admin on /payment-settings).</summary>
-public class PayModel(AppDbContext db, PaymentLinks links, CoverImages files,
+public class PayModel(AppDbContext db, PaymentLinks links, CoverImages files, BookingWorkflow workflow,
     Microsoft.AspNetCore.SignalR.IHubContext<MuzLoto.Web.Hubs.BookingHub> hub) : PageModel
 {
     public string Token { get; private set; } = "";
@@ -47,7 +47,7 @@ public class PayModel(AppDbContext db, PaymentLinks links, CoverImages files,
             try
             {
                 await files.SaveReceiptAsync(booking, receipt, ct);
-                await ReceiptNotice.SendAsync(hub, booking);
+                await ReceiptNotice.SendAsync(hub, workflow, booking, ct);
                 TempData["Notice"] = "Чек отправлен. Менеджер проверит оплату и подтвердит бронь.";
             }
             catch (BusinessException ex) { TempData["Error"] = ex.Message; }

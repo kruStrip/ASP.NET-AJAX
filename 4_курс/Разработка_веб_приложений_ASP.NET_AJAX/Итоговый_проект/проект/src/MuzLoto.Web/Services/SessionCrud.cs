@@ -17,7 +17,7 @@ public sealed record SessionSnapshot(
     decimal TicketPrice, int DurationMinutes, int AgeLimit, bool SalesOpen,
     bool Completed, string? MapUrl, bool Archived = false);
 
-public sealed class SessionCrud(AppDbContext db)
+public sealed class SessionCrud(AppDbContext db, StaffManagement staff)
 {
     public IQueryable<GameSession> AccessibleSessions(ClaimsPrincipal user)
     {
@@ -66,6 +66,8 @@ public sealed class SessionCrud(AppDbContext db)
         Update(session, input);
         db.GameSessions.Add(session);
         await db.SaveChangesAsync(ct);
+        // A new game is run by the default manager until an admin assigns someone else.
+        await staff.AssignDefaultManagerAsync(session.Id, ct);
         session.Game = game;
         return Map(session, 0);
     }

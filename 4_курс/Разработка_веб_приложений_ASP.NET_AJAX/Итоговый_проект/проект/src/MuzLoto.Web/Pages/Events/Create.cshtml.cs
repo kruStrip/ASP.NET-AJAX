@@ -10,7 +10,7 @@ namespace MuzLoto.Web.Pages.Events;
 
 /// <summary>Creates a new game with its first date, or (with ?gameId=) another date of an existing game.</summary>
 [Authorize(Roles = "Admin")]
-public class CreateModel(AppDbContext db, CoverImages covers) : PageModel
+public class CreateModel(AppDbContext db, CoverImages covers, StaffManagement staff) : PageModel
 {
     [BindProperty] public SessionForm Input { get; set; } = new();
     [BindProperty(SupportsGet = true)] public Guid? GameId { get; set; }
@@ -56,6 +56,8 @@ public class CreateModel(AppDbContext db, CoverImages covers) : PageModel
         Input.ApplyToSession(session, startsAt);
         db.GameSessions.Add(session);
         await db.SaveChangesAsync(ct);
+        // A new game is run by the default manager until an admin assigns someone else.
+        await staff.AssignDefaultManagerAsync(session.Id, ct);
         TempData["Notice"] = ExistingGame is null ? "Игра создана." : "Новая дата добавлена.";
         // The picture is saved after the date exists (files are keyed by the session ID). A bad file does not
         // undo the game: the admin sees why and can upload another one on the game page.

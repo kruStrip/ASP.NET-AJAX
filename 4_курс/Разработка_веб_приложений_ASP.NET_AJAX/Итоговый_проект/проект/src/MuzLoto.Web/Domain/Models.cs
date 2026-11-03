@@ -5,8 +5,16 @@ namespace MuzLoto.Web.Domain;
 public class AppUser : IdentityUser
 {
     public string? FullName { get; set; }
+    /// <summary>When the account was created. The earliest Manager is the default assignee for new games.</summary>
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     /// <summary>When the user accepted the personal-data policy at self-registration (152-ФЗ); null for staff created by an admin.</summary>
     public DateTimeOffset? PrivacyConsentAt { get; set; }
+    /// <summary>
+    /// Customer account created automatically by the site booking form (login = phone). Such an account exists only
+    /// to upload the receipt: it is deleted once the last pending booking of its owner is paid for. Staff and
+    /// self-registered accounts are permanent.
+    /// </summary>
+    public bool IsTemporaryCustomer { get; set; }
     public ICollection<EventStaffAssignment> EventAssignments { get; set; } = new List<EventStaffAssignment>();
     public ICollection<Booking> OwnedBookings { get; set; } = new List<Booking>();
 }
@@ -191,14 +199,23 @@ public class PaymentSettings
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-public enum MessageChannel { Telegram, WhatsApp }
+/// <summary>Customer messengers (Telegram, WhatsApp) and the staff bot that writes to the confirmation group.</summary>
+public enum MessageChannel { Telegram, WhatsApp, TelegramBot }
+
+/// <summary>
+/// What a message is about. The order matters: the QR image went before the payment details, and the confirmation
+/// after both, so the customer read the conversation in a sensible order. ReceiptNotification and ContactRequest
+/// are for managers only; ReceiptCopy is the customer's own receipt attached to the confirmation.
+/// </summary>
+public enum OutgoingMessageKind { PaymentQr, PaymentDetails, Confirmation, ReceiptNotification, ReceiptCopy, ContactRequest }
 
 /// <summary>Pending: waits for its turn (or for the channel to be connected); Skipped: the customer has no such messenger.</summary>
 public enum OutgoingMessageStatus { Pending, Sent, Failed, Skipped }
 
 /// <summary>
-/// A message to the customer, written in the same transaction as the confirmed payment (outbox): a crash or an
-/// unavailable messenger never loses it, and it is sent at most once. A background service delivers it.
+/// A message to a customer (confirmation) or to the managers' confirmation group (a new receipt), written before
+/// delivery so a crash or an unavailable messenger never loses it and it is sent at most once.
+/// A background service delivers it. Either <see cref="Text"/> or <see cref="ContentUri"/> is sent.
 /// </summary>
 public class OutgoingMessage
 {
@@ -206,8 +223,12 @@ public class OutgoingMessage
     public Guid BookingId { get; set; }
     public Booking Booking { get; set; } = null!;
     public MessageChannel Channel { get; set; }
+    public OutgoingMessageKind Kind { get; set; } = OutgoingMessageKind.Confirmation;
     public OutgoingMessageStatus Status { get; set; } = OutgoingMessageStatus.Pending;
+    /// <summary>Message text; empty for an attachment-only message (Wazzup cannot send text and a file together).</summary>
     public string Text { get; set; } = string.Empty;
+    /// <summary>Public link to an image sent as an attachment, e.g. the payment QR code.</summary>
+    public string? ContentUri { get; set; }
     public int Attempts { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset NextAttemptAt { get; set; } = DateTimeOffset.UtcNow;

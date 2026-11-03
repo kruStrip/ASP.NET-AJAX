@@ -45,6 +45,8 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
         public string? Name { get; set; }
         [Required(ErrorMessage = "Введите ваш телефон.")]
         public string? Phone { get; set; }
+        /// <summary>Telegram nickname, optional: the confirmation and the receipt copy also go to Telegram.</summary>
+        [StringLength(100, ErrorMessage = "Telegram: не длиннее 100 символов.")]
         public string? Telegram { get; set; }
         [Required(ErrorMessage = "Введите название команды."), StringLength(150, ErrorMessage = "Название команды: не длиннее 150 символов.")]
         public string? Team { get; set; }
@@ -89,6 +91,9 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
             // never signed in from the form (anyone could type someone else's number): that customer pays and
             // uploads the receipt on the payment screen and sees the booking after signing in.
             var ownerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            // A temporary account is deleted once its payment is confirmed, but the browser may still hold its cookie.
+            // A stale cookie must not break the new booking: a fresh temporary account is created for this phone.
+            if (ownerId is not null && await accounts.FindByIdAsync(ownerId) is null) ownerId = null;
             ClientAccounts.Result? account = null;
             if (ownerId is null)
             {
@@ -136,7 +141,7 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
         Selected = Offers.FirstOrDefault(x => x.Id == sessionId) ?? Offers.FirstOrDefault();
     }
 
-    /// <summary>Server-side checks; normalises the phone and Telegram so the review shows what will be saved.</summary>
+    /// <summary>Server-side checks; normalises the phone so the review shows what will be saved.</summary>
     private async Task<bool> ValidateAsync(CancellationToken ct)
     {
         await LoadAsync(Input.SessionId, ct);
@@ -157,7 +162,7 @@ public class HomeModel(PublicSchedule schedule, BookingWorkflow workflow, Paymen
         if (!string.IsNullOrWhiteSpace(Input.Telegram))
         {
             if (ContactRules.NormalizeTelegram(Input.Telegram) is { } nick) Input.Telegram = nick;
-            else ModelState.AddModelError("Input.Telegram", "Укажите ник в формате @username (не почту и не ссылку на сайт).");
+            else ModelState.AddModelError("Input.Telegram", "Введите ник в Telegram, например @username.");
         }
         else Input.Telegram = null;
         Input.Name = Input.Name?.Trim();

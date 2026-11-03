@@ -22,6 +22,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
+        b.Entity<AppUser>(e =>
+        {
+            // Existing accounts get the migration time; tie-breaks below keep the choice deterministic.
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+        });
         b.Entity<Game>(e =>
         {
             e.Property(x => x.Title).HasMaxLength(200).IsRequired();
@@ -93,10 +98,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         {
             e.HasOne(x => x.Booking).WithMany(bk => bk.Messages).HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Text).HasMaxLength(4000).IsRequired();
+            e.Property(x => x.ContentUri).HasMaxLength(500);
             e.Property(x => x.LastError).HasMaxLength(500);
             e.HasIndex(x => new { x.Status, x.NextAttemptAt });
-            // One confirmation message per booking and channel.
-            e.HasIndex(x => new { x.BookingId, x.Channel }).IsUnique();
+            // One message of each kind per booking and channel (confirmation, payment details, payment QR).
+            e.HasIndex(x => new { x.BookingId, x.Channel, x.Kind }).IsUnique();
         });
         b.Entity<PaymentSettings>(e =>
         {

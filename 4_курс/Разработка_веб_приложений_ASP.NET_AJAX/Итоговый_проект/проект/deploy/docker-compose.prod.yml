@@ -36,12 +36,18 @@ services:
       BootstrapAdmin__Password: ${MUZLOTO_ADMIN_PASSWORD:?set in .env}
       ForwardedHeaders__Enabled: "true"
       Site__PublicUrl: https://muzloto.b-o-c-a.ru
-      # Customer messages after a confirmed payment go through the Wazzup cloud service; the company connects
-      # its WhatsApp number and Telegram account in the Wazzup web interface. Empty API key = not connected yet.
+      # «Ваша игра подтверждена» goes through the Wazzup cloud service; the company connects its WhatsApp
+      # number and Telegram account in the Wazzup web interface. Empty API key = not connected yet.
       # Channel ids are optional: without them the only channel of the matching type in Wazzup is used.
       Wazzup__ApiKey: ${WAZZUP_API_KEY:-}
       Wazzup__WhatsAppChannelId: ${WAZZUP_WHATSAPP_CHANNEL_ID:-}
       Wazzup__TelegramChannelId: ${WAZZUP_TELEGRAM_CHANNEL_ID:-}
+      # Managers' notifications go to a Telegram group topic through our own bot (BotFather token):
+      # «Подтвердить игру» for a new receipt, «Связаться с клиентом» when the customer got nothing.
+      Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
+      Telegram__ManagerChatId: ${TELEGRAM_MANAGER_CHAT_ID:-}
+      Telegram__ManagerTopicId: ${TELEGRAM_MANAGER_TOPIC_ID:-}
+      Telegram__ContactTopicId: ${TELEGRAM_CONTACT_TOPIC_ID:-}
     volumes:
       - appdata:/data
     mem_limit: 320m

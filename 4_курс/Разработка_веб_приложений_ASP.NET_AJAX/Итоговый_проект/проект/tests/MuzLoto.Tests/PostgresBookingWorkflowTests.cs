@@ -17,6 +17,12 @@ namespace MuzLoto.Tests;
 /// </summary>
 public sealed class PostgresBookingWorkflowTests
 {
+    /// <summary>Signed receipt links need key storage, but these tests only care that the service exists.</summary>
+    private static ReceiptLinks Links(IConfiguration config) => new(
+        Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(
+            new DirectoryInfo(Path.Combine(Path.GetTempPath(), "opencode", "muzloto-dp-" + Guid.NewGuid().ToString("N")))),
+        config);
+
     [Fact]
     [Trait("Category", "Integration")]
     public async Task Pending_DoesNotReserve_ConfirmedDoes_CompletionRemovesPending()
@@ -57,7 +63,7 @@ public sealed class PostgresBookingWorkflowTests
         db.GameSessions.Add(session);
         await db.SaveChangesAsync();
 
-        var workflow = new BookingWorkflow(db, hub, logger, configuration);
+        var workflow = new BookingWorkflow(db, hub, logger, configuration, Links(configuration));
         var first = await workflow.ReceiveAsync(new IncomingBooking(
             "ci-" + Guid.NewGuid().ToString("N"), session.Id,
             "Команда 1", "Тест 1", "+70000000001", null, 1));
@@ -125,7 +131,7 @@ public sealed class PostgresBookingWorkflowTests
         db.Users.Add(user);
         db.GameSessions.Add(session);
         await db.SaveChangesAsync();
-        var workflow = new BookingWorkflow(db, hub, logger, config);
+        var workflow = new BookingWorkflow(db, hub, logger, config, Links(config));
         var first = await workflow.ReceiveAsync(new IncomingBooking(
             "ci-rest-" + Guid.NewGuid().ToString("N"), session.Id,
             "Команда 1", "Клиент 1", "+70000000001", null, 1));
@@ -194,7 +200,7 @@ public sealed class PostgresBookingWorkflowTests
         db.Users.Add(user);
         db.GameSessions.Add(session);
         await db.SaveChangesAsync();
-        var workflow = new BookingWorkflow(db, hub, logger, config);
+        var workflow = new BookingWorkflow(db, hub, logger, config, Links(config));
         var incoming = await workflow.ReceiveAsync(new IncomingBooking(
             "refund-" + Guid.NewGuid().ToString("N"), session.Id,
             "Клиент возврата", "Клиент возврата", "+70000000002", null, 2));
@@ -256,7 +262,8 @@ public sealed class PostgresBookingWorkflowTests
         db.Users.Add(user);
         db.GameSessions.Add(session);
         await db.SaveChangesAsync();
-        var workflow = new BookingWorkflow(db, hub, logger, new ConfigurationBuilder().Build());
+        var emptyConfig = new ConfigurationBuilder().Build();
+        var workflow = new BookingWorkflow(db, hub, logger, emptyConfig, Links(emptyConfig));
         var booking = await workflow.ReceiveAsync(new IncomingBooking(
             "refund-restore-" + Guid.NewGuid().ToString("N"), session.Id,
             "Команда", "Клиент", "+70000000003", null, 1));
@@ -275,6 +282,81 @@ public sealed class PostgresBookingWorkflowTests
             x.Status == RefundStatus.Pending));
         Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == booking.Id &&
             x.Status == RefundStatus.Cancelled));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task TemporaryCustomerAccount_IsDeletedAfterTheLastConfirmedBooking_AndPaidHistoryStays()
+    {
+        if (Environment.GetEnvironmentVariable("MUZLOTO_PG_TEST") != "1")
+            throw new InvalidOperationException("Set MUZLOTO_PG_TEST=1 and use an isolated test database.");
+        var connection = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+            ?? throw new InvalidOperationException("A disposable PostgreSQL test database is required.");
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection).Options;
+
+        using var services = new ServiceCollection()
+            .AddLogging()
+            .AddSignalR()
+            .Services.BuildServiceProvider();
+        var hub = services.GetRequiredService<IHubContext<BookingHub>>();
+        var logger = services.GetRequiredService<ILogger<BookingWorkflow>>();
+        var configuration = new ConfigurationBuilder().Build();
+
+        await using var db = new AppDbContext(options);
+        var staff = new AppUser
+        {
+            UserName = "ci-staff-" + Guid.NewGuid().ToString("N"),
+            Email = "ci-staff-" + Guid.NewGuid().ToString("N") + "@invalid.test"
+        };
+        var temporary = new AppUser
+        {
+            UserName = "+79" + Guid.NewGuid().ToString("N")[..9],
+            FullName = "Временный клиент", IsTemporaryCustomer = true
+        };
+        var permanent = new AppUser
+        {
+            UserName = "permanent-" + Guid.NewGuid().ToString("N"),
+            Email = "permanent-" + Guid.NewGuid().ToString("N") + "@invalid.test"
+        };
+        var session = new GameSession
+        {
+            Game = new Game { Title = "Temporary account test " + Guid.NewGuid().ToString("N") },
+            StartsAt = DateTimeOffset.UtcNow.AddDays(4), TimeZoneId = "Etc/UTC",
+            Venue = "CI testing", TicketPrice = 500m, Capacity = 10
+        };
+        db.Users.AddRange(staff, temporary, permanent);
+        db.GameSessions.Add(session);
+        await db.SaveChangesAsync();
+        var workflow = new BookingWorkflow(db, hub, logger, configuration, Links(configuration));
+
+        // Two pending bookings on the temporary account: confirming the first one must keep the account.
+        var first = await workflow.ReceiveAsync(new IncomingBooking(
+            "ci-temp-" + Guid.NewGuid().ToString("N"), session.Id,
+            "Команда 1", "Клиент", "+70000000011", null, 1, BookingSources.Web, temporary.Id));
+        var second = await workflow.ReceiveAsync(new IncomingBooking(
+            "ci-temp-" + Guid.NewGuid().ToString("N"), session.Id,
+            "Команда 2", "Клиент", "+70000000011", null, 1, BookingSources.Web, temporary.Id));
+        var permanentBooking = await workflow.ReceiveAsync(new IncomingBooking(
+            "ci-permanent-" + Guid.NewGuid().ToString("N"), session.Id,
+            "Команда 3", "Постоянный", "+70000000012", null, 1, BookingSources.Web, permanent.Id));
+
+        await workflow.ConfirmAsync(first.Id, staff.Id);
+        Assert.NotNull(await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == temporary.Id));
+
+        // The last pending booking is paid for: the temporary account goes, its paid bookings stay without an owner.
+        await workflow.ConfirmAsync(second.Id, staff.Id);
+        Assert.Null(await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == temporary.Id));
+        var kept = await db.Bookings.AsNoTracking()
+            .Where(x => x.Id == first.Id || x.Id == second.Id).ToListAsync();
+        Assert.Equal(2, kept.Count);
+        Assert.All(kept, x => Assert.Null(x.OwnerUserId));
+        Assert.All(kept, x => Assert.Equal(BookingStatus.Confirmed, x.Status));
+
+        // A self-registered / staff account is permanent even when its bookings are confirmed.
+        await workflow.ConfirmAsync(permanentBooking.Id, staff.Id);
+        Assert.NotNull(await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == permanent.Id));
+        Assert.Equal(permanent.Id,
+            (await db.Bookings.AsNoTracking().SingleAsync(x => x.Id == permanentBooking.Id)).OwnerUserId);
     }
 
 }

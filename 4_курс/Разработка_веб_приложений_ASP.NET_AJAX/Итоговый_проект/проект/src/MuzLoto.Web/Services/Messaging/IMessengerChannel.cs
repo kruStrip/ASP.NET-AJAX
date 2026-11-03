@@ -16,5 +16,5 @@ public interface IMessengerChannel
     MessageChannel Channel { get; }
     /// <summary>Signed in and able to send right now.</summary>
     Task<bool> IsReadyAsync(CancellationToken ct);
-    Task<SendOutcome> SendAsync(Booking booking, string text, CancellationToken ct);
+    Task<SendOutcome> SendAsync(OutgoingMessage message, CancellationToken ct);
 }

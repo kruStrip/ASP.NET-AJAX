@@ -48,6 +48,9 @@ public sealed class WazzupChannelTests
         TeamName = "МЯУ", CustomerName = "Вика", Phone = phone, Telegram = telegram, Quantity = 2
     };
 
+    private static OutgoingMessage Message(Booking booking, string text = "", string? contentUri = null) =>
+        new() { Booking = booking, Text = text, ContentUri = contentUri };
+
     private static HttpResponseMessage Json(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
@@ -69,7 +72,7 @@ public sealed class WazzupChannelTests
         var channel = Channel(http, Config(("Wazzup:ApiKey", "key")), MessageChannel.WhatsApp);
 
         Assert.True(await channel.IsReadyAsync(CancellationToken.None));
-        var outcome = await channel.SendAsync(Booking(), "текст", CancellationToken.None);
+        var outcome = await channel.SendAsync(Message(Booking(), "текст"), CancellationToken.None);
         Assert.Equal(OutgoingMessageStatus.Sent, outcome.Status);
 
         var (request, body) = http.Seen.Last();
@@ -84,13 +87,30 @@ public sealed class WazzupChannelTests
     }
 
     [Fact]
+    public async Task ImageMessage_IsSentAsContentUri_WithoutText()
+    {
+        var http = new ScriptedHttp();
+        http.Enqueue(Channels(ChannelJson("tg-1", "tgapi")));
+        http.Enqueue(Accepted);
+        var channel = Channel(http, Config(("Wazzup:ApiKey", "key")), MessageChannel.Telegram);
+
+        var message = Message(Booking(), contentUri: "https://muzloto.example/oplata/qr?v=7");
+        Assert.Equal(OutgoingMessageStatus.Sent, (await channel.SendAsync(message, CancellationToken.None)).Status);
+
+        using var json = System.Text.Json.JsonDocument.Parse(http.Seen.Last().Body);
+        var root = json.RootElement;
+        Assert.Equal("https://muzloto.example/oplata/qr?v=7", root.GetProperty("contentUri").GetString());
+        Assert.False(root.TryGetProperty("text", out _));   // Wazzup cannot send a file and text together
+    }
+
+    [Fact]
     public async Task Telegram_SendsByNickname_OrByPhoneWhenThereIsNone()
     {
         var byNick = new ScriptedHttp();
         byNick.Enqueue(Channels(ChannelJson("tg-1", "tgapi", "@company")));
         byNick.Enqueue(Accepted);
         var channel = Channel(byNick, Config(("Wazzup:ApiKey", "key")), MessageChannel.Telegram);
-        Assert.Equal(OutgoingMessageStatus.Sent, (await channel.SendAsync(Booking(), "привет", CancellationToken.None)).Status);
+        Assert.Equal(OutgoingMessageStatus.Sent, (await channel.SendAsync(Message(Booking(), "привет"), CancellationToken.None)).Status);
         var body = byNick.Seen.Last().Body;
         Assert.Contains("\"chatType\":\"telegram\"", body);
         Assert.Contains("\"username\":\"team\"", body);       // @team → without the @
@@ -100,7 +120,7 @@ public sealed class WazzupChannelTests
         byPhone.Enqueue(Channels(ChannelJson("tg-1", "tgapi", "@company")));
         byPhone.Enqueue(Accepted);
         channel = Channel(byPhone, Config(("Wazzup:ApiKey", "key")), MessageChannel.Telegram);
-        Assert.Equal(OutgoingMessageStatus.Sent, (await channel.SendAsync(Booking(telegram: null), "привет", CancellationToken.None)).Status);
+        Assert.Equal(OutgoingMessageStatus.Sent, (await channel.SendAsync(Message(Booking(telegram: null), "привет"), CancellationToken.None)).Status);
         Assert.Contains("\"phone\":\"79140000000\"", byPhone.Seen.Last().Body);
         Assert.DoesNotContain("\"username\"", byPhone.Seen.Last().Body);
     }
@@ -161,14 +181,14 @@ public sealed class WazzupChannelTests
         var unauthorized = new ScriptedHttp();
         unauthorized.Enqueue(Channels(ChannelJson("wa-1", "whatsapp")));
         unauthorized.Enqueue(Json(HttpStatusCode.Unauthorized, """{"error":"UNAUTHORIZED"}"""));
-        var outcome = await Channel(unauthorized, key, MessageChannel.WhatsApp).SendAsync(booking, "t", CancellationToken.None);
+        var outcome = await Channel(unauthorized, key, MessageChannel.WhatsApp).SendAsync(Message(booking, "t"), CancellationToken.None);
         Assert.Equal(OutgoingMessageStatus.Failed, outcome.Status);
         Assert.Contains("WAZZUP_API_KEY", outcome.Error);
 
         var throttled = new ScriptedHttp();
         throttled.Enqueue(Channels(ChannelJson("wa-1", "whatsapp")));
         throttled.Enqueue(new HttpResponseMessage((HttpStatusCode)429));
-        outcome = await Channel(throttled, key, MessageChannel.WhatsApp).SendAsync(booking, "t", CancellationToken.None);
+        outcome = await Channel(throttled, key, MessageChannel.WhatsApp).SendAsync(Message(booking, "t"), CancellationToken.None);
         Assert.Equal(OutgoingMessageStatus.Failed, outcome.Status);
         Assert.NotNull(outcome.RetryAfter);                    // try again after the pause Wazzup asked for
 
@@ -176,14 +196,14 @@ public sealed class WazzupChannelTests
         rejected.Enqueue(Channels(ChannelJson("wa-1", "whatsapp")));
         rejected.Enqueue(Json(HttpStatusCode.BadRequest,
             """{"error":"INVALID_MESSAGE_DATA","description":"Message data is invalid"}"""));
-        outcome = await Channel(rejected, key, MessageChannel.WhatsApp).SendAsync(booking, "t", CancellationToken.None);
+        outcome = await Channel(rejected, key, MessageChannel.WhatsApp).SendAsync(Message(booking, "t"), CancellationToken.None);
         Assert.Equal(OutgoingMessageStatus.Skipped, outcome.Status);   // will not fix itself: no retries
         Assert.Contains("Message data is invalid", outcome.Error);
 
         var broken = new ScriptedHttp();
         broken.Enqueue(Channels(ChannelJson("wa-1", "whatsapp")));
         broken.Enqueue(Json(HttpStatusCode.InternalServerError, """{"error":"INTERNAL"}"""));
-        outcome = await Channel(broken, key, MessageChannel.WhatsApp).SendAsync(booking, "t", CancellationToken.None);
+        outcome = await Channel(broken, key, MessageChannel.WhatsApp).SendAsync(Message(booking, "t"), CancellationToken.None);
         Assert.Equal(OutgoingMessageStatus.Failed, outcome.Status);     // temporary: retried later
     }
 
@@ -194,7 +214,7 @@ public sealed class WazzupChannelTests
         var channel = Channel(http, Config(), MessageChannel.WhatsApp);
         Assert.False(channel.IsConfigured);
         Assert.False(await channel.IsReadyAsync(CancellationToken.None));
-        var outcome = await channel.SendAsync(Booking(), "t", CancellationToken.None);
+        var outcome = await channel.SendAsync(Message(Booking(), "t"), CancellationToken.None);
         Assert.Equal(OutgoingMessageStatus.Failed, outcome.Status);
         Assert.Contains("WAZZUP_API_KEY", outcome.Error);
         Assert.Empty(http.Seen);                                // no request leaves the server without a key

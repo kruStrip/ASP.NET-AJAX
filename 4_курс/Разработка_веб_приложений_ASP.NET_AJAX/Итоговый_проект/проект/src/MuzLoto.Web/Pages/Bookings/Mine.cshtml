@@ -8,12 +8,11 @@
     @* Shown once, right after the booking form created the account. *@
     <section class="panel new-account" role="status">
         <h2>Ваш личный кабинет создан</h2>
-        <p>Сохраните данные для входа — пароль показывается только один раз.</p>
+        <p>Сохраните данные для входа — пароль показывается только один раз. Он нужен, чтобы загрузить чек до подтверждения оплаты; после подтверждения временный кабинет удаляется.</p>
         <dl class="review">
             <div><dt>Логин:</dt><dd>@TempData["NewLogin"]</dd></div>
             <div><dt>Пароль:</dt><dd><code>@password</code> <button type="button" class="small-button" data-copy="@password">Скопировать</button></dd></div>
         </dl>
-        <p><a asp-page="/Account/ChangePassword">Задать свой пароль</a></p>
     </section>
 }
 <div class="card-list">

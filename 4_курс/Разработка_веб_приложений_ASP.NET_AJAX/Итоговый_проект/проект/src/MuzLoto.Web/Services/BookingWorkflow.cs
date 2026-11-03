@@ -27,7 +27,7 @@ public static class BookingSources
 
 public sealed class BookingWorkflow(
     AppDbContext db, IHubContext<BookingHub> hub, ILogger<BookingWorkflow> logger,
-    IConfiguration config)
+    IConfiguration config, ReceiptLinks receiptLinks)
 {
     /// <summary>Optional global cap; by default a booking may take up to the remaining seats.</summary>
     private int? MaxPerBooking => config.GetValue<int?>("Booking:MaxTicketsPerBooking");
@@ -84,6 +84,8 @@ public sealed class BookingWorkflow(
                 Provider = provider, ExternalSubmissionId = input.ExternalSubmissionId,
                 BookingId = booking.Id
             });
+            // The customer of the site's own form lands in the personal account, where the payment details and
+            // the receipt upload live; no payment instructions are pushed to Telegram anymore.
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             sessionId = session.Id;
@@ -104,12 +106,53 @@ public sealed class BookingWorkflow(
         return (booking.Id, false);
     }
 
+    /// <summary>
+    /// Managers get one Telegram message (with the receipt attached) when a customer uploads a payment receipt.
+    /// A replacement receipt updates the queued message or sends a fresh one, so the group always has the latest file.
+    /// </summary>
+    public async Task QueueReceiptNotificationAsync(Guid bookingId, CancellationToken ct = default)
+    {
+        var booking = await db.Bookings.Include(x => x.GameSession).ThenInclude(x => x.Game)
+            .SingleOrDefaultAsync(x => x.Id == bookingId, ct);
+        if (booking is null || booking.Status != BookingStatus.Pending || booking.ReceiptKey is null) return;
+        var siteUrl = (config["Site:PublicUrl"] ?? "https://muzloto.b-o-c-a.ru").TrimEnd('/');
+        var text = Messaging.ReceiptNotificationMessage.Build(booking, booking.GameSession, booking.GameSession.Game, siteUrl);
+        var now = DateTimeOffset.UtcNow;
+        var message = await db.OutgoingMessages.FirstOrDefaultAsync(x => x.BookingId == bookingId &&
+            x.Channel == MessageChannel.TelegramBot && x.Kind == OutgoingMessageKind.ReceiptNotification, ct);
+        if (message is null)
+        {
+            db.OutgoingMessages.Add(new OutgoingMessage
+            {
+                BookingId = booking.Id, Channel = MessageChannel.TelegramBot,
+                Kind = OutgoingMessageKind.ReceiptNotification, Text = text,
+                CreatedAt = now, NextAttemptAt = now
+            });
+        }
+        else
+        {
+            // One row per booking (unique index); a new upload re-arms it so the group sees the latest receipt.
+            message.Text = text;
+            message.NextAttemptAt = now;
+            if (message.Status != OutgoingMessageStatus.Pending)
+            {
+                message.Status = OutgoingMessageStatus.Pending;
+                message.Attempts = 0;
+                message.SentAt = null;
+                message.LastError = null;
+                message.CreatedAt = now;
+            }
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
     public Task ConfirmAsync(Guid bookingId, string userId, CancellationToken ct = default) =>
         WithRetry(() => ConfirmCoreAsync(bookingId, userId, ct), ct);
 
     private async Task ConfirmCoreAsync(Guid bookingId, string userId, CancellationToken ct = default)
     {
         Guid sessionId;
+        string? ownerId = null;
         try
         {
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
@@ -141,19 +184,63 @@ public sealed class BookingWorkflow(
                 NewStatus = BookingStatus.Confirmed, ChangedByUserId = userId,
                 ChangedAt = now, Reason = "Ручное подтверждение оплаты"
             });
-            // The customer's "your game is confirmed" messages are queued in the same transaction (outbox).
+            // The customer's "your booking is confirmed" messages are queued in the same transaction (outbox).
             var game = await db.Games.AsNoTracking().SingleAsync(x => x.Id == session.GameId, ct);
-            var text = Messaging.ConfirmationMessage.Build(booking, session, game, config["Site:PublicUrl"] ?? "https://muzloto.b-o-c-a.ru");
-            var queued = await db.OutgoingMessages.Where(x => x.BookingId == booking.Id).Select(x => x.Channel).ToListAsync(ct);
-            foreach (var channel in Enum.GetValues<MessageChannel>().Except(queued))
-                db.OutgoingMessages.Add(new OutgoingMessage { BookingId = booking.Id, Channel = channel, Text = text, CreatedAt = now, NextAttemptAt = now });
+            var text = Messaging.ConfirmationMessage.Build(booking, session, game);
+            var queued = await db.OutgoingMessages
+                .Where(x => x.BookingId == booking.Id && x.Kind == OutgoingMessageKind.Confirmation)
+                .Select(x => x.Channel).ToListAsync(ct);
+            // The managers' bot channel is not a customer messenger: confirmations go only to the customer.
+            foreach (var channel in CustomerChannels.Except(queued))
+                db.OutgoingMessages.Add(new OutgoingMessage
+                {
+                    BookingId = booking.Id, Channel = channel, Kind = OutgoingMessageKind.Confirmation,
+                    Text = text, CreatedAt = now, NextAttemptAt = now
+                });
+            // The messenger cannot send text and a file together, so the customer's own receipt follows as the next
+            // message through a signed link. A booking confirmed without a receipt simply gets the text.
+            if (booking.ReceiptKey is { Length: > 0 } receiptKey)
+            {
+                var copied = await db.OutgoingMessages
+                    .Where(x => x.BookingId == booking.Id && x.Kind == OutgoingMessageKind.ReceiptCopy)
+                    .Select(x => x.Channel).ToListAsync(ct);
+                var receiptUri = receiptLinks.Create(booking.Id, receiptKey);
+                foreach (var channel in CustomerChannels.Except(copied))
+                    db.OutgoingMessages.Add(new OutgoingMessage
+                    {
+                        BookingId = booking.Id, Channel = channel, Kind = OutgoingMessageKind.ReceiptCopy,
+                        ContentUri = receiptUri, CreatedAt = now.AddSeconds(1), NextAttemptAt = now
+                    });
+            }
+            // Instructions to pay make no sense once the payment is confirmed; only not-yet-sent ones are dropped.
+            await db.OutgoingMessages
+                .Where(x => x.BookingId == booking.Id && x.Status == OutgoingMessageStatus.Pending &&
+                            x.Kind != OutgoingMessageKind.Confirmation)
+                .ForEachAsync(x =>
+                {
+                    x.Status = OutgoingMessageStatus.Skipped;
+                    x.LastError = "Оплата подтверждена — инструкция по оплате больше не нужна.";
+                }, ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             sessionId = session.Id;
+            ownerId = booking.OwnerUserId;
         }
         catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
         {
             throw new ConcurrencyConflictException("Места изменились одновременно. Обновите страницу и попробуйте ещё раз.");
+        }
+        // The account created by the site form is temporary: once the last pending booking is paid for, it is deleted.
+        // The confirmation messages are already queued, and paid history keeps the booking with no owner.
+        try
+        {
+            if (await ClientAccounts.TryDeleteTemporaryAsync(db, ownerId, ct))
+                logger.LogInformation("Временный аккаунт клиента {OwnerId} удалён после подтверждения оплаты.", ownerId);
+        }
+        catch (Exception ex)
+        {
+            // A failed cleanup must never undo or retry a confirmed payment.
+            logger.LogWarning(ex, "Не удалось удалить временный аккаунт клиента {OwnerId}.", ownerId);
         }
         await NotifyAsync(sessionId, "BookingConfirmed", bookingId);
         await NotifyAsync(sessionId, "TicketsAvailabilityChanged", bookingId);
@@ -200,6 +287,15 @@ public sealed class BookingWorkflow(
             }
             booking.Status = BookingStatus.Cancelled;
             booking.CancelledAt = now;
+            // Payment instructions that have not gone out yet would only confuse the customer now.
+            await db.OutgoingMessages
+                .Where(x => x.BookingId == booking.Id && x.Status == OutgoingMessageStatus.Pending &&
+                            x.Kind != OutgoingMessageKind.Confirmation)
+                .ForEachAsync(x =>
+                {
+                    x.Status = OutgoingMessageStatus.Skipped;
+                    x.LastError = "Заявка отменена — сообщение не отправлено.";
+                }, ct);
             db.BookingStatusHistory.Add(new BookingStatusHistory
             {
                 BookingId = booking.Id, OldStatus = oldStatus, NewStatus = BookingStatus.Cancelled,
@@ -591,6 +687,9 @@ public sealed class BookingWorkflow(
     }
 
     private const int MaxAttempts = 5;
+
+    /// <summary>Channels that can write to a customer; the staff bot is deliberately excluded.</summary>
+    private static readonly MessageChannel[] CustomerChannels = [MessageChannel.Telegram, MessageChannel.WhatsApp];
 
     /// <summary>
     /// SERIALIZABLE transactions may be aborted by PostgreSQL when they race (40001). Re-running the whole

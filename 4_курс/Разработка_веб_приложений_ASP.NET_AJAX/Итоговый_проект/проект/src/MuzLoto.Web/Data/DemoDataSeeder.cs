@@ -59,6 +59,8 @@ public static class DemoDataSeeder
         db.EventStaffAssignments.AddRange(
             new EventStaffAssignment { UserId = manager1.Id, GameSession = sessions[0] },
             new EventStaffAssignment { UserId = manager1.Id, GameSession = sessions[1] },
+            new EventStaffAssignment { UserId = manager1.Id, GameSession = sessions[3] },
+            new EventStaffAssignment { UserId = manager1.Id, GameSession = sessions[4] },
             new EventStaffAssignment { UserId = manager2.Id, GameSession = sessions[2] });
 
         var now = DateTimeOffset.UtcNow;

@@ -10,7 +10,7 @@ using MuzLoto.Web.Services;
 namespace MuzLoto.Web.Pages.Bookings;
 
 [Authorize]
-public class MineModel(AppDbContext db, IAuthorizationService authorization, CoverImages files,
+public class MineModel(AppDbContext db, IAuthorizationService authorization, CoverImages files, BookingWorkflow workflow,
     Microsoft.AspNetCore.SignalR.IHubContext<MuzLoto.Web.Hubs.BookingHub> hub) : PageModel
 {
     public List<Booking> Bookings { get; private set; } = new();
@@ -42,7 +42,7 @@ public class MineModel(AppDbContext db, IAuthorizationService authorization, Cov
         if (receipt is null) { TempData["Error"] = "Выберите файл с чеком."; return RedirectToPage(null, null, anchor); }
         try { await files.SaveReceiptAsync(booking, receipt, ct); }
         catch (BusinessException ex) { TempData["Error"] = ex.Message; return RedirectToPage(null, null, anchor); }
-        await ReceiptNotice.SendAsync(hub, booking);
+        await ReceiptNotice.SendAsync(hub, workflow, booking, ct);
         TempData["Notice"] = "Чек отправлен. Менеджер проверит оплату и подтвердит бронь.";
         return RedirectToPage(null, null, anchor);
     }

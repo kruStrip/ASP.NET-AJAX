@@ -256,6 +256,68 @@ public sealed class IdentityHttpTests(AppFactory app)
     }
 
     [Fact]
+    public async Task StaffPage_EndsSessions_AndDeletesAnAccount_ButNotItsOwn()
+    {
+        var customer = await app.CreateUserAsync("User");
+        var customerClient = await app.SignedInAsync(customer);
+        Assert.Equal(HttpStatusCode.OK, (await customerClient.GetAsync("/bookings/mine")).StatusCode);
+
+        var adminUser = await app.CreateUserAsync("Admin");
+        var admin = await app.SignedInAsync(adminUser);
+        var page = WebUtility.HtmlDecode(await admin.GetStringAsync("/staff"));
+        Assert.Contains("Завершить сессии", page);
+        Assert.Contains("Удалить аккаунт", page);
+
+        // «Завершить сессии»: the customer's existing cookie stops working at once.
+        var ended = await AppFactory.PostFormAsync(admin, "/staff?handler=EndSessions", new() { ["userId"] = customer.Id });
+        Assert.Equal(HttpStatusCode.Redirect, ended.StatusCode);
+        var afterEnd = await customerClient.GetAsync("/bookings/mine");
+        Assert.Equal(HttpStatusCode.Redirect, afterEnd.StatusCode);
+        Assert.StartsWith("/account/login", afterEnd.Headers.Location?.PathAndQuery);
+
+        var deleted = await AppFactory.PostFormAsync(admin, "/staff?handler=Delete", new() { ["userId"] = customer.Id });
+        Assert.Equal(HttpStatusCode.Redirect, deleted.StatusCode);
+        using (var scope = app.Services.CreateScope())
+            Assert.Null(await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByIdAsync(customer.Id));
+
+        // The signed-in admin cannot delete their own account by posting its id.
+        var self = await AppFactory.PostFormAsync(admin, "/staff?handler=Delete", new() { ["userId"] = adminUser.Id });
+        Assert.Equal(HttpStatusCode.Redirect, self.StatusCode);
+        Assert.Contains("Нельзя удалить собственный аккаунт", WebUtility.HtmlDecode(await admin.GetStringAsync("/staff")));
+        using (var scope = app.Services.CreateScope())
+            Assert.NotNull(await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByIdAsync(adminUser.Id));
+    }
+
+    [Fact]
+    public async Task StaffPage_ResetsAnEmployeesPassword_ButNotItsOwn()
+    {
+        var manager = await app.CreateUserAsync("Manager");
+        var adminUser = await app.CreateUserAsync("Admin");
+        var admin = await app.SignedInAsync(adminUser);
+
+        var reset = await AppFactory.PostFormAsync(admin, "/staff?handler=ResetPassword", new() { ["userId"] = manager.Id });
+        Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
+        var notice = WebUtility.HtmlDecode(await admin.GetStringAsync("/staff"));
+        var password = Regex.Match(notice, Regex.Escape(manager.UserName!) + ": ([a-z0-9]{10})").Groups[1].Value;
+        Assert.NotEmpty(password);
+
+        var login = await AppFactory.PostFormAsync(app.Browser(), "/account/login",
+            new() { ["Input.Login"] = manager.Email!, ["Input.Password"] = password });
+        Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+        var target = login.Headers.Location?.OriginalString ?? "";
+        Assert.StartsWith("/", target);
+        Assert.False(target.Contains("login", StringComparison.OrdinalIgnoreCase), target);   // a manager lands on the staff dashboard
+
+        // The signed-in admin cannot reset their own password: the session would end before they could read the new one.
+        var self = await AppFactory.PostFormAsync(admin, "/staff?handler=ResetPassword", new() { ["userId"] = adminUser.Id });
+        Assert.Equal(HttpStatusCode.Redirect, self.StatusCode);
+        Assert.Contains("Свой пароль меняйте", WebUtility.HtmlDecode(await admin.GetStringAsync("/staff")));
+        using var scope = app.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+        Assert.True(await users.CheckPasswordAsync((await users.FindByIdAsync(adminUser.Id))!, "Secret123"));
+    }
+
+    [Fact]
     public async Task FiveWrongPasswords_LockTheAccount()
     {
         var user = await app.CreateUserAsync("User");
