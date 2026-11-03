@@ -67,6 +67,12 @@ public sealed class TelegramBotChannelTests
                 Text = text, Kind = OutgoingMessageKind.ReceiptNotification };
     private static OutgoingMessage ContactMessage(string text = "Связаться с клиентом") =>
         new() { Booking = Booking(), Text = text, Kind = OutgoingMessageKind.ContactRequest };
+    private static OutgoingMessage StaffMessage(OutgoingMessageKind kind, string text = "Изменение брони") =>
+        new()
+        {
+            Booking = new Booking { Id = Guid.NewGuid(), Phone = "+79140000000", ReceiptKey = "receipts/abc.png" },
+            Text = text, Kind = kind
+        };
     private static HttpResponseMessage Ok(string json = """{"ok":true}""") =>
         new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
@@ -205,6 +211,46 @@ public sealed class TelegramBotChannelTests
         Assert.Contains("name=parse_mode", body);
         Assert.Contains("HTML", body);
         Assert.Contains("<pre>", body);   // the caption keeps its HTML; Telegram parses it with parse_mode=HTML
+    }
+
+    /// <summary>
+    /// «Изменения в бронях» and «Отмена игр» are staff notices sent as HTML (so the phone is tappable to copy) to
+    /// their own topics; the booking's receipt is deliberately not attached to them (2026-11-04).
+    /// </summary>
+    [Fact]
+    public async Task StaffTopics_ReceiveChangesAndCancellations_WithoutTheReceipt()
+    {
+        var config = Config(("Telegram:BotToken", "123:ABC"), ("Telegram:ManagerChatId", "-100123456"),
+            ("Telegram:ManagerTopicId", "77"), ("Telegram:ChangesTopicId", "99"), ("Telegram:CancelTopicId", "100"));
+        var http = new ScriptedHttp();
+        http.Enqueue(Ok());
+        http.Enqueue(Ok());
+        var channel = Channel(http, config, new FakeReceipts(TempFile(".png", [0x89, 0x50, 0x4E, 0x47])));
+        const string text = "Изменение брони\n\nТелефон: 79140000000";
+
+        Assert.Equal(OutgoingMessageStatus.Sent,
+            (await channel.SendAsync(StaffMessage(OutgoingMessageKind.BookingChanged, text), CancellationToken.None)).Status);
+        Assert.Equal(OutgoingMessageStatus.Sent,
+            (await channel.SendAsync(StaffMessage(OutgoingMessageKind.BookingCancelled, text), CancellationToken.None)).Status);
+
+        Assert.All(http.Seen, x => Assert.EndsWith("/sendMessage", x.Request.RequestUri!.ToString()));
+        using var changed = JsonDocument.Parse(http.Seen[0].Body);
+        Assert.Equal(99, changed.RootElement.GetProperty("message_thread_id").GetInt64());
+        Assert.Equal("HTML", changed.RootElement.GetProperty("parse_mode").GetString());
+        Assert.Contains("Телефон: <code>79140000000</code>", changed.RootElement.GetProperty("text").GetString());
+        using var cancelled = JsonDocument.Parse(http.Seen[1].Body);
+        Assert.Equal(100, cancelled.RootElement.GetProperty("message_thread_id").GetInt64());
+    }
+
+    /// <summary>Until the topic ids are set, the notices land in the group's General topic instead of waiting.</summary>
+    [Fact]
+    public async Task StaffTopics_WithoutTheirIds_FallBackToTheGeneralTopic()
+    {
+        var http = new ScriptedHttp();
+        http.Enqueue(Ok());
+        await Channel(http, Ready).SendAsync(StaffMessage(OutgoingMessageKind.BookingChanged), CancellationToken.None);
+        using var json = JsonDocument.Parse(http.Seen.Single().Body);
+        Assert.False(json.RootElement.TryGetProperty("message_thread_id", out _));
     }
 
     [Fact]

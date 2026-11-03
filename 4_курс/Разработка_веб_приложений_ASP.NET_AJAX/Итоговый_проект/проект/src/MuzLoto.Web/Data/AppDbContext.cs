@@ -102,7 +102,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(x => x.LastError).HasMaxLength(500);
             e.HasIndex(x => new { x.Status, x.NextAttemptAt });
             // One message of each kind per booking and channel (confirmation, payment details, payment QR).
-            e.HasIndex(x => new { x.BookingId, x.Channel, x.Kind }).IsUnique();
+            // Staff notices about booking changes and cancellations repeat, so they stay out of the unique index.
+            e.HasIndex(x => new { x.BookingId, x.Channel, x.Kind }).IsUnique()
+                .HasFilter($"\"Kind\" NOT IN ({(int)OutgoingMessageKind.BookingChanged}, {(int)OutgoingMessageKind.BookingCancelled})");
         });
         b.Entity<PaymentSettings>(e =>
         {

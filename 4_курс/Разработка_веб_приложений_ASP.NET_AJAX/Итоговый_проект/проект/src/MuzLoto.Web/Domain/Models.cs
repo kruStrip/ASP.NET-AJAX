@@ -204,10 +204,15 @@ public enum MessageChannel { Telegram, WhatsApp, TelegramBot }
 
 /// <summary>
 /// What a message is about. The order matters: the QR image went before the payment details, and the confirmation
-/// after both, so the customer read the conversation in a sensible order. ReceiptNotification and ContactRequest
-/// are for managers only; ReceiptCopy is the customer's own receipt attached to the confirmation.
+/// after both, so the customer read the conversation in a sensible order. ReceiptNotification, ContactRequest,
+/// BookingChanged and BookingCancelled are for managers only; ReceiptCopy is the customer's own receipt attached to
+/// the confirmation. BookingChanged goes to «Изменения в бронях», BookingCancelled to «Отмена игр» (2026-11-04).
 /// </summary>
-public enum OutgoingMessageKind { PaymentQr, PaymentDetails, Confirmation, ReceiptNotification, ReceiptCopy, ContactRequest }
+public enum OutgoingMessageKind
+{
+    PaymentQr, PaymentDetails, Confirmation, ReceiptNotification, ReceiptCopy, ContactRequest,
+    BookingChanged, BookingCancelled
+}
 
 /// <summary>Pending: waits for its turn (or for the channel to be connected); Skipped: the customer has no such messenger.</summary>
 public enum OutgoingMessageStatus { Pending, Sent, Failed, Skipped }

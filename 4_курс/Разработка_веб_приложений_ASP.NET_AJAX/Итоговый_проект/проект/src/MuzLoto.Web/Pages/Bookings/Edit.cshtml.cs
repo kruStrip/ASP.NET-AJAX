@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -51,7 +52,8 @@ public class EditModel(AppDbContext db, IAuthorizationService authorization, Boo
         if (!ModelState.IsValid) return Page();
         try
         {
-            await workflow.UpdatePendingAsync(id, Input.TeamName, Input.CustomerName, telegram, Input.Quantity, ct);
+            await workflow.UpdatePendingAsync(id, Input.TeamName, Input.CustomerName, telegram, Input.Quantity,
+                User.FindFirstValue(ClaimTypes.NameIdentifier), ct);
         }
         catch (BusinessException ex)
         {

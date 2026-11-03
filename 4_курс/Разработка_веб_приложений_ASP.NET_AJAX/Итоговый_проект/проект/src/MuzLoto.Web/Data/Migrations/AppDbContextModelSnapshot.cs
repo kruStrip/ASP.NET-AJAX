@@ -548,7 +548,8 @@ namespace MuzLoto.Web.Data.Migrations
                     b.HasIndex("Status", "NextAttemptAt");
 
                     b.HasIndex("BookingId", "Channel", "Kind")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"Kind\" NOT IN (6, 7)");
 
                     b.ToTable("OutgoingMessages");
                 });

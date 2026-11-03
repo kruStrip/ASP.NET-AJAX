@@ -139,7 +139,7 @@ public sealed class BookingsV1Controller(
             ModelState.AddModelError(nameof(input.Telegram), "Ник Telegram в формате @username.");
             return ValidationProblem(ModelState);
         }
-        await workflow.UpdatePendingAsync(id, input.TeamName, input.CustomerName, telegram, input.Quantity, ct);
+        await workflow.UpdatePendingAsync(id, input.TeamName, input.CustomerName, telegram, input.Quantity, UserId, ct);
         return Ok(Map(await Bookings().SingleAsync(x => x.Id == id, ct)));
     });
 

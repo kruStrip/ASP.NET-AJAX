@@ -43,11 +43,14 @@ services:
       Wazzup__WhatsAppChannelId: ${WAZZUP_WHATSAPP_CHANNEL_ID:-}
       Wazzup__TelegramChannelId: ${WAZZUP_TELEGRAM_CHANNEL_ID:-}
       # Managers' notifications go to a Telegram group topic through our own bot (BotFather token):
-      # «Подтвердить игру» for a new receipt, «Связаться с клиентом» when the customer got nothing.
+      # «Подтвердить игру» for a new receipt, «Связаться с клиентом» when the customer got nothing,
+      # «Изменения в бронях» for a staff edit, «Отмена игр» for a cancelled booking.
       Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
       Telegram__ManagerChatId: ${TELEGRAM_MANAGER_CHAT_ID:-}
       Telegram__ManagerTopicId: ${TELEGRAM_MANAGER_TOPIC_ID:-}
       Telegram__ContactTopicId: ${TELEGRAM_CONTACT_TOPIC_ID:-}
+      Telegram__ChangesTopicId: ${TELEGRAM_CHANGES_TOPIC_ID:-}
+      Telegram__CancelTopicId: ${TELEGRAM_CANCEL_TOPIC_ID:-}
       # Telegram Bot API is blocked for this hosting: the calls go through a small Cloudflare Worker
       # (deploy/cloudflare-worker). Empty TELEGRAM_API_BASE_URL = call api.telegram.org directly.
       Telegram__ApiBaseUrl: ${TELEGRAM_API_BASE_URL:-}

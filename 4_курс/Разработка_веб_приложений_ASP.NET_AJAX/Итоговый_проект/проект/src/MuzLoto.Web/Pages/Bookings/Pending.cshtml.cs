@@ -51,7 +51,7 @@ public class PendingModel(AppDbContext db, IAuthorizationService authorization, 
         if (quantity == 0) return await OnPostCancelAsync(id, ct);
         return await RunAsync(async () =>
         {
-            await workflow.UpdatePendingAsync(id, booking!.TeamName, booking.CustomerName, booking.Telegram, quantity, ct);
+            await workflow.UpdatePendingAsync(id, booking!.TeamName, booking.CustomerName, booking.Telegram, quantity, UserId, ct);
             return $"Количество изменено: {quantity} бил., к оплате {quantity * booking.TicketPriceSnapshot:N0} ₽.";
         });
     }

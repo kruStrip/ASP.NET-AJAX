@@ -17,7 +17,7 @@ public static class ContactRequestMessage
 
     public static string Build(Booking booking, GameSession session, Game game, int maxLength = 1024)
     {
-        var phone = Digits(booking.Phone);
+        var phone = TelegramHtml.Digits(booking.Phone);
         var nick = booking.Telegram?.Trim().TrimStart('@');
         var links = new List<string>();
         if (nick is { Length: > 0 }) links.Add($"Telegram: https://t.me/{nick}");
@@ -39,27 +39,29 @@ public static class ContactRequestMessage
     /// <summary>
     /// The same text as HTML for the Telegram bot (parse_mode=HTML): the customer's block sits in a &lt;pre&gt; element,
     /// and Telegram shows it as a monospace block with a «Copy» button — one tap instead of selecting a long message
-    /// on a phone (decision of 2026-11-03). Everything is HTML-escaped: names and venues may contain &lt;, &gt; or &amp;.
+    /// on a phone (decision of 2026-11-03). The phone in the managers' header is &lt;code&gt;, which Telegram makes
+    /// tappable to copy (2026-11-04). Everything is HTML-escaped: names and venues may contain &lt;, &gt; or &amp;.
     /// The whole message must still fit Telegram's 1024-character caption limit, so the customer's block is shortened
     /// (with «…») when the escaping makes it too long.
     /// </summary>
-    public static string ToTelegramHtml(string text, int maxLength = 1024)
+    public static string ToTelegramHtml(string text, string? phone = null, int maxLength = 1024)
     {
         var at = text.IndexOf(Separator, StringComparison.Ordinal);
         // Without the separator (a message queued before this change) the whole text becomes the copyable block.
         var header = at < 0 ? "" : text[..(at + Separator.Length)];
         var body = (at < 0 ? text : text[(at + Separator.Length)..]).Trim('\n');
-        var prefix = (header.Length > 0 ? Escape(header) + "\n" : "") + "<pre>";
+        var headerHtml = header.Length > 0 ? TelegramHtml.CodePhone(TelegramHtml.Escape(header), phone) + "\n" : "";
+        var prefix = headerHtml + "<pre>";
         const string suffix = "</pre>";
         var budget = maxLength - prefix.Length - suffix.Length;
-        if (Escape(body).Length > budget)
+        if (TelegramHtml.Escape(body).Length > budget)
         {
             // The ellipsis itself takes a character, so it is counted while shrinking the block.
             do { body = (body.Length > 0 ? body[..^1] : body).TrimEnd(); }
-            while (body.Length > 0 && Escape(body + "…").Length > budget);
+            while (body.Length > 0 && TelegramHtml.Escape(body + "…").Length > budget);
             body = body.Length > 0 ? body + "…" : "";
         }
-        return prefix + Escape(body) + suffix;
+        return prefix + TelegramHtml.Escape(body) + suffix;
     }
 
     /// <summary>
@@ -82,26 +84,13 @@ public static class ContactRequestMessage
 
             Имя: {booking.CustomerName}
             Команда: {booking.TeamName}
-            Телефон: {Digits(booking.Phone)}
+            Телефон: {TelegramHtml.Digits(booking.Phone)}
             Кол-во билетов: {booking.Quantity}
 
             Итого: {Money(total)} ₽
             """;
     }
 
-    /// <summary>
-    /// Only the three characters Telegram treats as HTML. WebUtility.HtmlEncode is not used on purpose: it turns every
-    /// Cyrillic letter and the non-breaking space in «1 400 ₽» into numeric entities, which Telegram would show as is.
-    /// </summary>
-    private static string Escape(string value) =>
-        value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
-
+    /// <summary>«1 400 ₽» — a non-breaking space between thousands would look odd in a copied message.</summary>
     private static string Money(decimal amount) => amount.ToString("#,0.##", Ru);
-
-    /// <summary>Wazzup wants digits only: +7 914 000-00-00 → 79140000000.</summary>
-    private static string Digits(string phone)
-    {
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-        return digits.Length == 11 && digits[0] == '8' ? '7' + digits[1..] : digits;
-    }
 }

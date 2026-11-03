@@ -78,6 +78,30 @@ public sealed class PaidQuantityTests(AppFactory app)
     }
 
     [Fact]
+    public async Task ChangesAndCancellation_QueueStaffNotifications()
+    {
+        var (_, bookingId, staff) = await PaidOrderAsync(capacity: 10, quantity: 3);
+        await WithAsync((wf, _) => wf.ChangePaidQuantityAsync(bookingId, 2, staff));
+        await WithAsync((wf, _) => wf.ChangePaidQuantityAsync(bookingId, 1, staff));   // a second change is a second notice
+        await WithAsync(async (wf, _) => { await wf.CancelAsync(bookingId, staff); return 0; });
+
+        var messages = await WithAsync((_, db) => db.OutgoingMessages.AsNoTracking()
+            .Where(x => x.BookingId == bookingId &&
+                        (x.Kind == OutgoingMessageKind.BookingChanged || x.Kind == OutgoingMessageKind.BookingCancelled))
+            .OrderBy(x => x.CreatedAt).ToListAsync());
+
+        var changes = messages.Where(x => x.Kind == OutgoingMessageKind.BookingChanged).ToList();
+        Assert.Equal(2, changes.Count);                                             // the filtered unique index allows it
+        Assert.Contains(changes, x => x.Text.Contains("Билетов: 3 → 2"));
+        Assert.Contains(changes, x => x.Text.Contains("Билетов: 2 → 1"));
+        var cancelled = Assert.Single(messages, x => x.Kind == OutgoingMessageKind.BookingCancelled);
+        Assert.Contains("Отмена брони", cancelled.Text);
+        Assert.Contains("Оплата: оплачено 2\u00A0100 ₽", cancelled.Text);
+        Assert.Contains("возврат 700 ₽", cancelled.Text);
+        Assert.All(messages, x => Assert.Equal(MessageChannel.TelegramBot, x.Channel));
+    }
+
+    [Fact]
     public async Task Increase_WaitsForSurcharge_ThenTakesSeatsAndGrowsPayment()
     {
         var (sessionId, bookingId, staff) = await PaidOrderAsync(capacity: 6, quantity: 4);

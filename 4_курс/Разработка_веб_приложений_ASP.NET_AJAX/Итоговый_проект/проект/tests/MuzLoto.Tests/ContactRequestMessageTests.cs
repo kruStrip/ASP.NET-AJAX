@@ -48,7 +48,9 @@ public sealed class ContactRequestMessageTests
         Assert.EndsWith(ContactRequestMessage.CustomerText(Booking, Session, Session.Game), text);
     }
 
-    /// <summary>Telegram shows a «Copy» button for a &lt;pre&gt; block — that is the point of the HTML version.</summary>
+    /// <summary>
+    /// Telegram shows a «Copy» button for a &lt;pre&gt; block — that is the point of the HTML version.
+    /// </summary>
     [Fact]
     public void TelegramHtml_WrapsOnlyTheCustomerTextIntoTheCopyableBlock()
     {
@@ -57,6 +59,25 @@ public sealed class ContactRequestMessageTests
         Assert.True(html.IndexOf("https://t.me/team_msg", StringComparison.Ordinal) < html.IndexOf("<pre>", StringComparison.Ordinal));
         Assert.EndsWith("</pre>", html);
         Assert.Equal(1, html.Split("<pre>").Length - 1);
+    }
+
+    /// <summary>Digits in &lt;code&gt; are tappable in Telegram: the manager copies the phone with one tap (2026-11-04).</summary>
+    [Fact]
+    public void TelegramHtml_MakesThePhoneTappableToCopy()
+    {
+        var html = ContactRequestMessage.ToTelegramHtml(
+            ContactRequestMessage.Build(Booking, Session, Session.Game), Booking.Phone);
+        Assert.Contains("Телефон: <code>79934902720</code>", html);
+        Assert.Equal(1, html.Split("Телефон: <code>").Length - 1);   // the copy inside <pre> stays untouched
+    }
+
+    [Fact]
+    public void TelegramHtml_WithoutThePhone_StillHasNoBrokenMarkup()
+    {
+        var html = ContactRequestMessage.ToTelegramHtml(ContactRequestMessage.Build(Booking, Session, Session.Game));
+        Assert.Contains("Телефон: 79934902720", html);
+        Assert.DoesNotContain("<code>", html);
+        Assert.EndsWith("</pre>", html);
     }
 
     [Fact]

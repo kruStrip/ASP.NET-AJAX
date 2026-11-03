@@ -8,10 +8,11 @@ using MuzLoto.Web.Services;
 namespace MuzLoto.Web.Services.Messaging;
 
 /// <summary>
-/// Sends the managers' notifications to Telegram group topics through a bot: «Подтвердить игру» for a new receipt
-/// and «Связаться с клиентом» when the customer's confirmation could not be delivered. The bot is added to the group
-/// by the company; the site stores only its token and the chat/topic ids (Telegram:BotToken, Telegram:ManagerChatId,
-/// Telegram:ManagerTopicId, Telegram:ContactTopicId — see docs/DEPLOY.md).
+/// Sends the managers' notifications to Telegram group topics through a bot: «Подтвердить игру» for a new receipt,
+/// «Связаться с клиентом» when the customer's confirmation could not be delivered, «Изменения в бронях» when staff
+/// edit a booking and «Отмена игр» when staff cancel one. The bot is added to the group by the company; the site
+/// stores only its token and the chat/topic ids (Telegram:BotToken, Telegram:ManagerChatId, Telegram:ManagerTopicId,
+/// Telegram:ContactTopicId, Telegram:ChangesTopicId, Telegram:CancelTopicId — see docs/DEPLOY.md).
 /// The receipt file is uploaded from the local storage, so it is never exposed by a public link.
 /// When the server cannot reach api.telegram.org (Telegram is blocked for the hosting), the calls go through a small
 /// relay that forwards only the bot methods we use: Telegram:ApiBaseUrl points at it and Telegram:RelaySecret is the
@@ -30,6 +31,8 @@ public sealed class TelegramBotChannel(
     private string? ChatId => config["Telegram:ManagerChatId"]?.Trim();
     private string? TopicId => config["Telegram:ManagerTopicId"]?.Trim();
     private string? ContactTopicId => config["Telegram:ContactTopicId"]?.Trim();
+    private string? ChangesTopicId => config["Telegram:ChangesTopicId"]?.Trim();
+    private string? CancelTopicId => config["Telegram:CancelTopicId"]?.Trim();
     private string? RelaySecret => config["Telegram:RelaySecret"]?.Trim();
 
     /// <summary>The calls go through a relay (Telegram is unreachable from this server) rather than to api.telegram.org.</summary>
@@ -50,9 +53,17 @@ public sealed class TelegramBotChannel(
         }
     }
 
-    /// <summary>«Подтвердить игру» for receipts, «Связаться с клиентом» when the customer got nothing.</summary>
-    private string? TopicFor(OutgoingMessage message) =>
-        message.Kind == OutgoingMessageKind.ContactRequest ? ContactTopicId : TopicId;
+    /// <summary>
+    /// «Подтвердить игру» for receipts, «Связаться с клиентом» when the customer got nothing, plus the two staff
+    /// topics. A change/cancel topic that is not set yet falls back to the group's General topic.
+    /// </summary>
+    private string? TopicFor(OutgoingMessage message) => message.Kind switch
+    {
+        OutgoingMessageKind.ContactRequest => ContactTopicId,
+        OutgoingMessageKind.BookingChanged => ChangesTopicId,
+        OutgoingMessageKind.BookingCancelled => CancelTopicId,
+        _ => TopicId
+    };
 
     /// <summary>No token or chat id means the group was not set up yet; messages simply wait in the queue.</summary>
     public Task<bool> IsReadyAsync(CancellationToken ct) =>
@@ -79,7 +90,10 @@ public sealed class TelegramBotChannel(
     private Task<HttpResponseMessage> SendCoreAsync(string token, string chatId, string? topic,
         OutgoingMessage message, CancellationToken ct)
     {
-        if (message.Booking.ReceiptKey is not { Length: > 0 } key) return SendTextAsync(token, chatId, topic, message, ct);
+        // Only these two carry the customer's receipt; a change or cancellation notice must not resend it.
+        var withReceipt = message.Kind is OutgoingMessageKind.ReceiptNotification or OutgoingMessageKind.ContactRequest;
+        if (!withReceipt || message.Booking.ReceiptKey is not { Length: > 0 } key)
+            return SendTextAsync(token, chatId, topic, message, ct);
         if (ThroughRelay) return SendFileByLinkAsync(token, chatId, topic, message, key, ct);
         return files.OpenReceipt(message.Booking) is { } file
             ? SendFileAsync(token, chatId, topic, file, message, ct)
@@ -88,12 +102,20 @@ public sealed class TelegramBotChannel(
 
     /// <summary>
     /// The text to show. «Связаться с клиентом» is sent as HTML with the customer's block in &lt;pre&gt;, so Telegram
-    /// draws a «Copy» button next to it (decision of 2026-11-03); everything else stays plain text.
+    /// draws a «Copy» button next to it (decision of 2026-11-03). Staff notices about changes and cancellations are
+    /// HTML too, so the phone is tappable to copy (2026-11-04); everything else stays plain text.
     /// </summary>
-    private static bool AsHtml(OutgoingMessage message) => message.Kind == OutgoingMessageKind.ContactRequest;
+    private static bool AsHtml(OutgoingMessage message) => message.Kind is
+        OutgoingMessageKind.ContactRequest or OutgoingMessageKind.BookingChanged or OutgoingMessageKind.BookingCancelled;
 
-    private static string TelegramText(OutgoingMessage message) =>
-        AsHtml(message) ? ContactRequestMessage.ToTelegramHtml(message.Text) : message.Text;
+    private static string TelegramText(OutgoingMessage message) => message.Kind switch
+    {
+        OutgoingMessageKind.ContactRequest =>
+            ContactRequestMessage.ToTelegramHtml(message.Text, message.Booking?.Phone),
+        OutgoingMessageKind.BookingChanged or OutgoingMessageKind.BookingCancelled =>
+            TelegramHtml.ToHtml(message.Text, message.Booking?.Phone),
+        _ => message.Text
+    };
 
     private Task<HttpResponseMessage> SendTextAsync(string token, string chatId, string? topic,
         OutgoingMessage message, CancellationToken ct)

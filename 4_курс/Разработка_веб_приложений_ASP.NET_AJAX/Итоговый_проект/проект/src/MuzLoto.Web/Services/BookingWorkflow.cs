@@ -115,7 +115,7 @@ public sealed class BookingWorkflow(
         var booking = await db.Bookings.Include(x => x.GameSession).ThenInclude(x => x.Game)
             .SingleOrDefaultAsync(x => x.Id == bookingId, ct);
         if (booking is null || booking.Status != BookingStatus.Pending || booking.ReceiptKey is null) return;
-        var siteUrl = (config["Site:PublicUrl"] ?? "https://muzloto.b-o-c-a.ru").TrimEnd('/');
+        var siteUrl = SiteUrl;
         var text = Messaging.ReceiptNotificationMessage.Build(booking, booking.GameSession, booking.GameSession.Game, siteUrl);
         var now = DateTimeOffset.UtcNow;
         var message = await db.OutgoingMessages.FirstOrDefaultAsync(x => x.BookingId == bookingId &&
@@ -144,6 +144,52 @@ public sealed class BookingWorkflow(
             }
         }
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>The site address in a notification: a manager taps it and lands on the booking card.</summary>
+    private string SiteUrl => (config["Site:PublicUrl"] ?? "https://muzloto.b-o-c-a.ru").TrimEnd('/');
+
+    /// <summary>Full name of the employee who made the change, falling back to the account's e-mail/login.</summary>
+    private async Task<string?> ActorNameAsync(string? userId, CancellationToken ct) =>
+        string.IsNullOrWhiteSpace(userId)
+            ? null
+            : await db.Users.AsNoTracking().Where(x => x.Id == userId)
+                .Select(x => x.FullName ?? x.Email ?? x.UserName).FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// The managers' topic «Изменения в бронях» gets one message per staff edit, in the same transaction as the edit
+    /// itself (outbox). <paramref name="changes"/> is what was before → what it became.
+    /// </summary>
+    private async Task QueueBookingChangedAsync(Booking booking, string? userId,
+        IReadOnlyList<string> changes, CancellationToken ct)
+    {
+        if (changes.Count == 0) return;
+        var session = booking.GameSession;
+        var game = await db.Games.AsNoTracking().SingleAsync(x => x.Id == session.GameId, ct);
+        var actor = await ActorNameAsync(userId, ct);
+        var now = DateTimeOffset.UtcNow;
+        db.OutgoingMessages.Add(new OutgoingMessage
+        {
+            BookingId = booking.Id, Channel = MessageChannel.TelegramBot, Kind = OutgoingMessageKind.BookingChanged,
+            Text = Messaging.BookingChangeMessage.Changed(booking, session, game, actor, changes, SiteUrl),
+            CreatedAt = now, NextAttemptAt = now
+        });
+    }
+
+    /// <summary>The managers' topic «Отмена игр» gets one message per cancelled booking, in the same transaction.</summary>
+    private async Task QueueBookingCancelledAsync(Booking booking, string? userId,
+        string payment, string refund, CancellationToken ct)
+    {
+        var session = booking.GameSession;
+        var game = await db.Games.AsNoTracking().SingleAsync(x => x.Id == session.GameId, ct);
+        var actor = await ActorNameAsync(userId, ct);
+        var now = DateTimeOffset.UtcNow;
+        db.OutgoingMessages.Add(new OutgoingMessage
+        {
+            BookingId = booking.Id, Channel = MessageChannel.TelegramBot, Kind = OutgoingMessageKind.BookingCancelled,
+            Text = Messaging.BookingChangeMessage.Cancelled(booking, session, game, actor, payment, refund, SiteUrl),
+            CreatedAt = now, NextAttemptAt = now
+        });
     }
 
     public Task ConfirmAsync(Guid bookingId, string userId, CancellationToken ct = default) =>
@@ -258,12 +304,14 @@ public sealed class BookingWorkflow(
         try
         {
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-            var booking = await db.Bookings.Include(x => x.Payment)
+            var booking = await db.Bookings.Include(x => x.Payment).Include(x => x.GameSession)
                 .SingleOrDefaultAsync(x => x.Id == bookingId, ct)
                 ?? throw new BusinessException("Заявка не найдена.", 404);
             if (booking.Status == BookingStatus.Cancelled) return;
             var oldStatus = booking.Status;
             var now = DateTimeOffset.UtcNow;
+            var paymentState = "не оплачено";
+            var refundState = "возврат не требуется";
             if (oldStatus == BookingStatus.Confirmed)
             {
                 var payment = booking.Payment
@@ -278,12 +326,17 @@ public sealed class BookingWorkflow(
                         x.Kind == RefundKind.QuantityDecrease && x.Status != RefundStatus.Cancelled)
                     .SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
                 var amount = payment.Amount - alreadyOwed;
+                paymentState = $"оплачено {Messaging.BookingChangeMessage.Money(payment.Amount)} ₽";
                 if (amount > 0)
+                {
                     db.Refunds.Add(new Refund
                     {
                         PaymentId = payment.Id, Amount = amount, Kind = RefundKind.Cancellation,
                         RequestedAt = now, RequestedByUserId = userId
                     });
+                    refundState = $"возврат {Messaging.BookingChangeMessage.Money(amount)} ₽ поставлен в очередь";
+                }
+                else refundState = "часть оплаты уже возвращена — возврат не требуется";
                 // A surcharge that was never paid is simply dropped.
                 await db.QuantityChanges.Where(x => x.BookingId == booking.Id && x.Status == QuantityChangeStatus.AwaitingPayment)
                     .ForEachAsync(x => { x.Status = QuantityChangeStatus.Cancelled; x.CompletedAt = now; x.CompletedByUserId = userId; }, ct);
@@ -307,6 +360,8 @@ public sealed class BookingWorkflow(
                     ? "Отмена заказа; возврат денег поставлен в очередь, но не выполнен"
                     : "Отмена неоплаченной заявки"
             });
+            // Queued after the loop above, which drops the notices that no longer make sense.
+            await QueueBookingCancelledAsync(booking, userId, paymentState, refundState, ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             sessionId = booking.GameSessionId;
@@ -322,11 +377,11 @@ public sealed class BookingWorkflow(
 
     /// <summary>Edit an unpaid booking. Pending requests hold no seats, so only the remaining-seat limit applies.</summary>
     public Task UpdatePendingAsync(Guid bookingId, string teamName, string customerName,
-        string? telegram, int quantity, CancellationToken ct = default) =>
-        WithRetry(() => UpdatePendingCoreAsync(bookingId, teamName, customerName, telegram, quantity, ct), ct);
+        string? telegram, int quantity, string? userId, CancellationToken ct = default) =>
+        WithRetry(() => UpdatePendingCoreAsync(bookingId, teamName, customerName, telegram, quantity, userId, ct), ct);
 
     private async Task UpdatePendingCoreAsync(Guid bookingId, string teamName, string customerName,
-        string? telegram, int quantity, CancellationToken ct = default)
+        string? telegram, int quantity, string? userId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(teamName) || teamName.Length > 150 ||
             string.IsNullOrWhiteSpace(customerName) || customerName.Length > 150 ||
@@ -349,10 +404,18 @@ public sealed class BookingWorkflow(
                 .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
             if (quantity > session.Capacity - reserved)
                 throw new BusinessException($"Свободных билетов меньше, чем запрошено: осталось {Math.Max(0, session.Capacity - reserved)}.");
+            var old = new { booking.TeamName, booking.CustomerName, booking.Telegram, booking.Quantity };
             booking.TeamName = teamName.Trim();
             booking.CustomerName = customerName.Trim();
             booking.Telegram = telegram;
             booking.Quantity = quantity;
+            var changes = new List<string>();
+            if (old.TeamName != booking.TeamName) changes.Add($"Команда: {old.TeamName} → {booking.TeamName}");
+            if (old.CustomerName != booking.CustomerName) changes.Add($"Клиент: {old.CustomerName} → {booking.CustomerName}");
+            if (old.Telegram != booking.Telegram)
+                changes.Add($"Telegram: {old.Telegram ?? "—"} → {booking.Telegram ?? "—"}");
+            if (old.Quantity != booking.Quantity) changes.Add($"Билетов: {old.Quantity} → {booking.Quantity}");
+            await QueueBookingChangedAsync(booking, userId, changes, ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             sessionId = session.Id;
@@ -423,6 +486,12 @@ public sealed class BookingWorkflow(
                 change.CompletedByUserId = userId;
             }
             db.QuantityChanges.Add(change);
+            await QueueBookingChangedAsync(booking, userId,
+            [
+                change.IsIncrease
+                    ? $"Билетов: {change.OldQuantity} → {change.NewQuantity} (ожидается доплата {Messaging.BookingChangeMessage.Money(change.Amount)} ₽)"
+                    : $"Билетов: {change.OldQuantity} → {change.NewQuantity} (места освобождены, возврат {Messaging.BookingChangeMessage.Money(change.Amount)} ₽)"
+            ], ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             sessionId = booking.GameSessionId;
@@ -470,6 +539,10 @@ public sealed class BookingWorkflow(
             change.Status = QuantityChangeStatus.Applied;
             change.CompletedAt = now;
             change.CompletedByUserId = userId;
+            await QueueBookingChangedAsync(booking, userId,
+            [
+                $"Билетов: {change.OldQuantity} → {change.NewQuantity} (доплата {Messaging.BookingChangeMessage.Money(change.Amount)} ₽ получена)"
+            ], ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             (sessionId, bookingId) = (booking.GameSessionId, booking.Id);
@@ -484,7 +557,8 @@ public sealed class BookingWorkflow(
 
     public async Task CancelSurchargeAsync(Guid changeId, string userId, CancellationToken ct = default)
     {
-        var change = await db.QuantityChanges.Include(x => x.Booking).SingleOrDefaultAsync(x => x.Id == changeId, ct)
+        var change = await db.QuantityChanges.Include(x => x.Booking).ThenInclude(x => x.GameSession)
+            .SingleOrDefaultAsync(x => x.Id == changeId, ct)
             ?? throw new BusinessException("Изменение не найдено.", 404);
         if (change.Status == QuantityChangeStatus.Cancelled) return;
         if (change.Status != QuantityChangeStatus.AwaitingPayment)
@@ -492,6 +566,8 @@ public sealed class BookingWorkflow(
         change.Status = QuantityChangeStatus.Cancelled;
         change.CompletedAt = DateTimeOffset.UtcNow;
         change.CompletedByUserId = userId;
+        await QueueBookingChangedAsync(change.Booking, userId,
+            [$"Доплата за {change.NewQuantity} бил. отменена: билетов остаётся {change.OldQuantity}"], ct);
         await db.SaveChangesAsync(ct);
         await NotifyAsync(change.Booking.GameSessionId, "BookingUpdated", change.BookingId);
     }
@@ -568,6 +644,12 @@ public sealed class BookingWorkflow(
                 NewStatus = previousStatus, ChangedByUserId = userId, ChangedAt = now,
                 Reason = "Восстановление сотрудником в течение одного часа"
             });
+            await QueueBookingChangedAsync(booking, userId,
+            [
+                previousStatus == BookingStatus.Confirmed
+                    ? "Заявка восстановлена: «Отменена» → «Оплачена»" + (pendingRefundToCancel is not null ? " (запрос на возврат снят)" : "")
+                    : "Заявка восстановлена: «Отменена» → «Ожидает подтверждения»"
+            ], ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             sessionId = session.Id;
