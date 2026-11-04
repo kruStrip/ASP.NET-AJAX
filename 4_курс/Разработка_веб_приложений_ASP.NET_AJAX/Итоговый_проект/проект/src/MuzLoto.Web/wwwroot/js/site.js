@@ -14,6 +14,17 @@
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
   }
 
+  // The server rejects an old anti-forgery token with a bare 400 and runs nothing. Such a page is almost always an
+  // old tab or one the browser restored by itself; a reload gives it a fresh token, and the note survives the reload.
+  function reloadWithNote(text) {
+    try { sessionStorage.setItem('muzloto:notice', text); } catch { /* private mode: the reload alone will do */ }
+    location.reload();
+  }
+  try {
+    const note = sessionStorage.getItem('muzloto:notice');
+    if (note) { sessionStorage.removeItem('muzloto:notice'); show(note, true); }
+  } catch { /* private mode */ }
+
   async function refreshVisibleList() {
     const current = document.querySelector('[data-live-list]');
     if (!current || pendingRefresh) return;
@@ -27,10 +38,19 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
       const next = doc.querySelector('[data-live-list]');
-      if (next) current.replaceChildren(...Array.from(next.childNodes).map(node => document.importNode(node, true)));
+      if (next) {
+        current.replaceChildren(...Array.from(next.childNodes).map(node => document.importNode(node, true)));
+        // The fresh copy also carries the current anti-forgery token; taking it keeps a long-open page usable.
+        const meta = doc.querySelector('meta[name="csrf-token"]');
+        const own = document.querySelector('meta[name="csrf-token"]');
+        if (meta && own) own.setAttribute('content', meta.getAttribute('content'));
+      }
     } catch { show('Не удалось обновить список. Повторите загрузку страницы.', true); }
     finally { pendingRefresh = false; }
   }
+
+  // A page restored from the browser's back-forward cache never asked the server, so its token may be stale.
+  window.addEventListener('pageshow', event => { if (event.persisted) refreshVisibleList(); });
 
   document.addEventListener('submit', async event => {
     const form = event.target;
@@ -54,8 +74,15 @@
         show(response.status === 401 ? 'Войдите повторно.' : 'Нет прав на действие.', true);
         return;
       }
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) { show(result.detail || `Ошибка ${response.status}`, true); return; }
+      const result = await response.json().catch(() => null);
+      // 400 without an explanation = stale anti-forgery token (see reloadWithNote). Nothing has been executed.
+      if (response.status === 400 && !result?.detail) {
+        reloadWithNote('Страница устарела — мы её обновили. Повторите действие.');
+        return;
+      }
+      if (!response.ok) { show(result?.detail || `Ошибка ${response.status}`, true); return; }
+      // A redirect to the sign-in page comes back as a 200 HTML page, not as our JSON.
+      if (!result) { show('Сессия истекла. Войдите повторно.', true); return; }
       show(result.message || 'Изменения сохранены.');
       // Edits keep the card: the refreshed list below shows the new count, total and remaining seats.
       const keepsCard = ['booking-quantity', 'booking-surcharge'].includes(form.dataset.ajaxAction);
