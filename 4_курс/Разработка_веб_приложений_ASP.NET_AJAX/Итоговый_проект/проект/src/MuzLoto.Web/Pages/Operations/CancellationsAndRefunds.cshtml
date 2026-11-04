@@ -1,0 +1,74 @@
+@page "/operations/cancellations-and-refunds"
+@model MuzLoto.Web.Pages.Operations.CancellationsAndRefundsModel
+@{
+    ViewData["Title"] = "Отмены и возвраты";
+}
+
+<div class="page-heading"><div>
+<div class="eyebrow">Управление отменами и финансовыми операциями</div><h1>Отмены и возвраты</h1>
+<p class="muted">Восстановление заявок доступно в течение часа после отмены до фактического возврата денег. Нажимайте «Деньги возвращены» только после реального перечисления клиенту. Система не переводит деньги автоматически.</p>
+</div></div>
+
+<div data-live-list>
+    <section class="panel"><h2>Отменённые заявки (@Model.CancelledBookings.Count)</h2></section>
+    <div class="card-list">
+    @foreach (var b in Model.CancelledBookings)
+    {
+    <article class="booking-card" data-session-id="@b.GameSessionId"><div>
+    <span class="eyebrow">@b.GameSession.Game.Title — @ScheduleTime.Format(b.GameSession.StartsAt, b.GameSession.TimeZoneId)</span>
+    <h2>@b.TeamName</h2>
+    <p>@b.CustomerName · @b.Quantity бил. · @((b.Quantity * b.TicketPriceSnapshot).ToString("N2")) ₽</p>
+    <span class="status cancelled">Отменена @(b.CancelledAt.HasValue ? ScheduleTime.Format(b.CancelledAt.Value, b.GameSession.TimeZoneId) : "—")</span>
+    </div><div class="button-stack">
+    <form method="post" asp-page-handler="Restore" data-ajax-action="booking-restore" data-confirm="Восстановить заявку? Для оплаченной заявки места будут заняты повторно, ожидающий возврат будет отменён, новый платёж не создаётся.">
+    <input type="hidden" name="id" value="@b.Id" /><button type="submit" class="button">Восстановить</button>
+    </form></div></article>
+    }
+    @if (Model.CancelledBookings.Count == 0) { <p class="muted">Нет отменённых заявок, доступных для восстановления.</p> }
+    </div>
+
+    @if (User.IsInRole("Admin"))
+    {
+        <section class="panel"><h2>Ожидают возврата (@Model.PendingRefunds.Count)</h2></section>
+        <div class="card-list">
+        @foreach (var refund in Model.PendingRefunds)
+        {
+          var booking = refund.Payment.Booking;
+          <article class="booking-card" data-session-id="@booking.GameSessionId">
+            <div>
+              <span class="eyebrow">@booking.GameSession.Game.Title — @ScheduleTime.Format(booking.GameSession.StartsAt, booking.GameSession.TimeZoneId)</span>
+              <h2>@booking.TeamName · @refund.Amount.ToString("N2") ₽</h2>
+              <p class="muted">@(refund.Kind == RefundKind.QuantityDecrease ? "Частичный возврат: уменьшено количество билетов, заказ остаётся оплаченным" : "Возврат за отменённый заказ")</p>
+              <p>@booking.CustomerName · @booking.Quantity бил. · <a href="tel:@booking.Phone">@booking.Phone</a></p>
+              <span class="status pending">Деньги ещё не возвращены</span>
+            </div>
+            <form method="post" asp-page-handler="CompleteRefund" data-ajax-action="refund-complete"
+              data-confirm="Подтвердить возврат? Отметить перечисление можно только после фактического перевода денег клиенту.">
+              <input type="hidden" name="id" value="@refund.Id" />
+              <label class="check"><input type="checkbox" name="confirmTransfer" value="true" required /> Я действительно перечислил(а) деньги</label>
+              <input type="text" name="transferReference" maxlength="200" placeholder="ID перевода / примечание (необязательно)" />
+              <button type="submit" class="button">Деньги возвращены</button>
+            </form>
+          </article>
+        }
+        @if (Model.PendingRefunds.Count == 0) { <p class="muted">Нет возвратов, ожидающих перечисления.</p> }
+        </div>
+
+        <section class="panel"><h2>Выполненные возвраты</h2></section>
+        <div class="card-list">
+        @foreach (var refund in Model.CompletedRefunds)
+        {
+          var booking = refund.Payment.Booking;
+          <article class="booking-card" data-session-id="@booking.GameSessionId">
+            <div><h2>@booking.TeamName — @refund.Amount.ToString("N2") ₽</h2>
+              <p class="muted">@(refund.Kind == RefundKind.QuantityDecrease ? "Частичный (уменьшение количества)" : "Отмена заказа")</p>
+              <p>@booking.CustomerName · @booking.GameSession.Game.Title</p>
+              <p class="muted">Возврат подтверждён: @(refund.CompletedAt is { } done ? ScheduleTime.Format(done, booking.GameSession.TimeZoneId) : "—")</p>
+              @if (!string.IsNullOrWhiteSpace(refund.TransferReference)) { <p class="muted">Примечание: @refund.TransferReference</p> }
+            </div><span class="status confirmed">Деньги возвращены</span>
+          </article>
+        }
+        @if (Model.CompletedRefunds.Count == 0) { <p class="muted">Подтверждённых возвратов пока нет.</p> }
+        </div>
+    }
+</div>

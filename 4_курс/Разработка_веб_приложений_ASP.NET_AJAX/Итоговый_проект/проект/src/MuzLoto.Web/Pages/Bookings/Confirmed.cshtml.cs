@@ -32,7 +32,7 @@ public class ConfirmedModel(AppDbContext db, IAuthorizationService authorization
         return denied ?? await RunAsync(async () =>
         {
             await workflow.CancelAsync(id, UserId, ct);
-            return "Покупка отменена, места освобождены. Заявка на возврат денег создана — подтвердите перевод в разделе «Возвраты».";
+            return "Покупка отменена, места освобождены. Заявка на возврат денег создана — подтвердите перевод в разделе «Отмены и возвраты».";
         });
     }
 
@@ -49,7 +49,7 @@ public class ConfirmedModel(AppDbContext db, IAuthorizationService authorization
             {
                 null => "Количество не изменилось.",
                 { IsIncrease: true } => $"Ожидается доплата {change.Amount:N0} ₽. Места займутся после подтверждения доплаты.",
-                _ => $"Количество уменьшено до {change.NewQuantity}. Места освобождены, создан возврат {change.Amount:N0} ₽ — подтвердите перевод в «Возвратах»."
+                _ => $"Количество уменьшено до {change.NewQuantity}. Места освобождены, создан возврат {change.Amount:N0} ₽ — подтвердите перевод в разделе «Отмены и возвраты»."
             };
         });
     }
