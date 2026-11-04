@@ -142,7 +142,7 @@ public sealed class PostgresBookingWorkflowTests
         await workflow.ConfirmAsync(first.Id, user.Id);
         await workflow.CancelAsync(first.Id, user.Id);
         Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == first.Id &&
-            x.Status == RefundStatus.Pending));
+            x.Status == RefundStatus.Completed));
         Assert.Equal(0, await db.Bookings.Where(x =>
             x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed).CountAsync());
         // Another paid booking takes the released place; restoration must be rejected.
@@ -173,7 +173,7 @@ public sealed class PostgresBookingWorkflowTests
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task PaidCancellation_RequestsRefund_CompletedRefundReducesNet_AndBlocksRestore()
+    public async Task PaidCancellation_RecordsRefundAsReturned_AndRestoreWithinHourReversesIt()
     {
         if (Environment.GetEnvironmentVariable("MUZLOTO_PG_TEST") != "1")
             throw new InvalidOperationException("Integration tests require an isolated PostgreSQL database.");
@@ -207,37 +207,34 @@ public sealed class PostgresBookingWorkflowTests
         await workflow.ConfirmAsync(incoming.Id, user.Id);
         await workflow.CancelAsync(incoming.Id, user.Id);
 
-        var pending = await db.Refunds.SingleAsync(x => x.Payment.BookingId == incoming.Id);
-        Assert.Equal(RefundStatus.Pending, pending.Status);
-        Assert.Equal(1600m, pending.Amount);
+        // Cancelling marks the money as returned at once: no separate «Деньги возвращены» step (decision 2026-11-04).
+        var refund = await db.Refunds.SingleAsync(x => x.Payment.BookingId == incoming.Id);
+        Assert.Equal((RefundStatus.Completed, 1600m), (refund.Status, refund.Amount));
+        Assert.NotNull(refund.CompletedAt);
+        Assert.Equal(user.Id, refund.CompletedByUserId);
         Assert.Equal(0, await db.Bookings.CountAsync(x => x.GameSessionId == session.Id &&
             x.Status == BookingStatus.Confirmed));
         Assert.Equal(1600m, await db.Payments.Where(x => x.BookingId == incoming.Id)
             .SumAsync(x => x.Amount));
-        Assert.Equal(0m, await db.Refunds.Where(x => x.Payment.BookingId == incoming.Id &&
-            x.Status == RefundStatus.Completed).SumAsync(x => x.Amount));
-
-        await workflow.ConfirmRefundAsync(pending.Id, user.Id, "CI-test-transfer");
-        await workflow.ConfirmRefundAsync(pending.Id, user.Id, "CI-test-transfer");
-        Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == incoming.Id &&
-            x.Status == RefundStatus.Completed));
         var gross = await db.Payments.Where(x => x.BookingId == incoming.Id)
             .SumAsync(x => x.Amount);
         var returned = await db.Refunds.Where(x => x.Payment.BookingId == incoming.Id &&
             x.Status == RefundStatus.Completed).SumAsync(x => x.Amount);
         Assert.Equal(0m, gross - returned);
-        var denied = await Assert.ThrowsAsync<BusinessException>(
-            () => workflow.RestoreCancelledAsync(incoming.Id, user.Id));
-        Assert.Equal(409, denied.StatusCode);
-        // The workflow may clear the shared change tracker when it retries a SERIALIZABLE conflict:
-        // read fresh state with a query instead of reloading a previously tracked instance.
-        Assert.Equal("CI-test-transfer", await db.Refunds.AsNoTracking()
-            .Where(x => x.Id == pending.Id).Select(x => x.TransferReference).SingleAsync());
+
+        // Restoring within the hour means the transfer never happened: the automatic record is withdrawn
+        // and the original payment is kept, so no new payment is created.
+        await workflow.RestoreCancelledAsync(incoming.Id, user.Id);
+        Assert.Equal(BookingStatus.Confirmed, await db.Bookings.AsNoTracking()
+            .Where(x => x.Id == incoming.Id).Select(x => x.Status).SingleAsync());
+        Assert.Equal(RefundStatus.Cancelled, await db.Refunds.AsNoTracking()
+            .Where(x => x.Id == refund.Id).Select(x => x.Status).SingleAsync());
+        Assert.Equal(1, await db.Payments.CountAsync(x => x.BookingId == incoming.Id));
     }
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task RestoringBeforeRefund_RemovesRequest_AndPreventsCompletingIt()
+    public async Task RestoringReversesAutomaticRefund_AndALaterCancellationCreatesANewRecord()
     {
         if (Environment.GetEnvironmentVariable("MUZLOTO_PG_TEST") != "1")
             throw new InvalidOperationException("Integration tests require an isolated PostgreSQL database.");
@@ -270,16 +267,17 @@ public sealed class PostgresBookingWorkflowTests
         await workflow.ConfirmAsync(booking.Id, user.Id);
         await workflow.CancelAsync(booking.Id, user.Id);
         var refund = await db.Refunds.SingleAsync(x => x.Payment.BookingId == booking.Id);
+        Assert.Equal(RefundStatus.Completed, refund.Status);
+
         await workflow.RestoreCancelledAsync(booking.Id, user.Id);
-        Assert.Equal(RefundStatus.Cancelled, refund.Status);
-        var denied = await Assert.ThrowsAsync<BusinessException>(
-            () => workflow.ConfirmRefundAsync(refund.Id, user.Id));
-        Assert.Equal(409, denied.StatusCode);
+        Assert.Equal(RefundStatus.Cancelled, await db.Refunds.AsNoTracking()
+            .Where(x => x.Id == refund.Id).Select(x => x.Status).SingleAsync());
         Assert.Equal(1, await db.Payments.CountAsync(x => x.BookingId == booking.Id));
-        // A later cancellation creates a new request while retaining the old cancelled one.
+
+        // A later cancellation records a new completed refund while the reversed one stays in the audit trail.
         await workflow.CancelAsync(booking.Id, user.Id);
         Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == booking.Id &&
-            x.Status == RefundStatus.Pending));
+            x.Status == RefundStatus.Completed));
         Assert.Equal(1, await db.Refunds.CountAsync(x => x.Payment.BookingId == booking.Id &&
             x.Status == RefundStatus.Cancelled));
     }

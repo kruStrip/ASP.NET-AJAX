@@ -48,9 +48,6 @@ public sealed class ReportsTests(AppFactory app)
         {
             var wf = scope.ServiceProvider.GetRequiredService<BookingWorkflow>();
             await wf.ChangePaidQuantityAsync(reduced, 2, manager.Id);
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var refund = db.Refunds.Single(x => x.Payment.BookingId == reduced);
-            await wf.ConfirmRefundAsync(refund.Id, manager.Id);
             await wf.ReceiveAsync(new IncomingBooking("r-" + Guid.NewGuid().ToString("N"), b1.Id, "Ждут", "Клиент", "+79000000031", null, 5)); // pending: not a sale
         }
 

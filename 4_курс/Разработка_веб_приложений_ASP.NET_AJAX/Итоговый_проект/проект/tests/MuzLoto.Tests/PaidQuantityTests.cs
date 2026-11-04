@@ -59,12 +59,9 @@ public sealed class PaidQuantityTests(AppFactory app)
 
         Assert.Equal(3, await SoldAsync(sessionId));                         // seats freed at once
         var partial = Assert.Single(await RefundsAsync(bookingId));
-        Assert.Equal((RefundKind.QuantityDecrease, RefundStatus.Pending, 1400m), (partial.Kind, partial.Status, partial.Amount));
+        // A reduced paid order records the difference as returned right away (decision of 2026-11-04).
+        Assert.Equal((RefundKind.QuantityDecrease, RefundStatus.Completed, 1400m), (partial.Kind, partial.Status, partial.Amount));
         Assert.Equal(3500m, await WithAsync((_, db) => db.Payments.Where(x => x.BookingId == bookingId).Select(x => x.Amount).SingleAsync()));
-
-        // A partial refund can be paid out while the order stays active.
-        await WithAsync(async (wf, _) => { await wf.ConfirmRefundAsync(partial.Id, staff); return 0; });
-        Assert.Equal(RefundStatus.Completed, (await RefundsAsync(bookingId)).Single().Status);
 
         await WithAsync(async (wf, _) => { await wf.CancelAsync(bookingId, staff); return 0; });
         var cancellation = (await RefundsAsync(bookingId)).Single(x => x.Kind == RefundKind.Cancellation);

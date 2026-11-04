@@ -162,6 +162,8 @@ select option:checked{background:#7c0103 linear-gradient(#7c0103,#7c0103);color:
 .payment-block{margin-top:16px;padding-top:14px;border-top:1px solid var(--soft);display:grid;gap:8px}
 .payment-block .pay-qr{margin:6px 0}
 .payment-block .pay-text{text-align:left}
+/* The receipt request is the step that actually gets the booking confirmed: keep it loud. */
+.payment-block .receipt-callout{margin:6px 0;padding:12px 14px;border-radius:12px;background:var(--field);font-size:19px;line-height:1.35}
 .receipt-form{display:grid;gap:6px;max-width:460px}
 .receipt-form .button{justify-self:start}
 .receipt-sent{font-weight:700}

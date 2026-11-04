@@ -11,8 +11,7 @@ namespace MuzLoto.Web.Services;
 public sealed record SalesSummary(
     int TicketsSold, int ConfirmedOrders, decimal ConfirmedRevenue,
     decimal AverageCheck, decimal AverageTicketsPerOrder, int PendingRequests,
-    int PaymentsCount, decimal GrossPayments, decimal Refunded, decimal NetRevenue,
-    int PendingRefundsCount, decimal PendingRefundAmount);
+    int PaymentsCount, decimal GrossPayments, decimal Refunded, decimal NetRevenue);
 
 /// <summary>Sales of one game (all its dates) or of one date: confirmed orders only.</summary>
 public sealed record SalesRow(string Title, int Tickets, decimal Revenue, int Orders);
@@ -126,7 +125,6 @@ public sealed class SalesReport(AppDbContext db)
                 .SumAsync(x => (decimal?)x.Amount, ct) ?? 0);
         var gross = await payments.SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
         var refunded = await refunds.Where(x => x.Status == RefundStatus.Completed).SumAsync(x => (decimal?)x.Amount, ct) ?? 0;
-        var pendingRefunds = refunds.Where(x => x.Status == RefundStatus.Pending);
 
         return new SalesSummary(
             TicketsSold: tickets,
@@ -138,8 +136,6 @@ public sealed class SalesReport(AppDbContext db)
             PaymentsCount: await payments.CountAsync(ct),
             GrossPayments: gross,
             Refunded: refunded,
-            NetRevenue: gross - refunded,
-            PendingRefundsCount: await pendingRefunds.CountAsync(ct),
-            PendingRefundAmount: await pendingRefunds.SumAsync(x => (decimal?)x.Amount, ct) ?? 0);
+            NetRevenue: gross - refunded);
     }
 }

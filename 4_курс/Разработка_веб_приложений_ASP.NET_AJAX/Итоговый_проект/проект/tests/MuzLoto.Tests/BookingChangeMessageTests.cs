@@ -42,11 +42,11 @@ public sealed class BookingChangeMessageTests
     public void Cancelled_ShowsThePaymentAndRefundState()
     {
         var text = BookingChangeMessage.Cancelled(Booking(BookingStatus.Cancelled), Session, Session.Game,
-            "Менеджер", "оплачено 1\u00A0400 ₽", "возврат 1\u00A0400 ₽ поставлен в очередь", "https://muzloto.example");
+            "Менеджер", "оплачено 1\u00A0400 ₽", "возврат 1\u00A0400 ₽ отмечен как выполненный", "https://muzloto.example");
 
         Assert.StartsWith("Отмена брони", text);
         Assert.Contains("Оплата: оплачено 1\u00A0400 ₽", text);
-        Assert.Contains("Возврат: возврат 1\u00A0400 ₽ поставлен в очередь", text);
+        Assert.Contains("Возврат: возврат 1\u00A0400 ₽ отмечен как выполненный", text);
         Assert.Contains("Отменил: Менеджер", text);
         Assert.Contains("https://muzloto.example/bookings#booking-11111111222233334444555555555555", text);
     }

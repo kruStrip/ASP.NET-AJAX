@@ -109,7 +109,11 @@ public class Payment
     public ICollection<Refund> Refunds { get; set; } = new List<Refund>();
 }
 
-/// <summary>Only Completed refunds represent money actually returned to the customer.</summary>
+/// <summary>
+/// Completed refunds are the money actually returned to the customer. Since 2026-11-04 cancelling an order (or
+/// reducing a paid one) records the refund as completed at once; «Cancelled» marks a record reversed by restoring
+/// the booking within the hour. «Pending» remains only for historical rows created before that decision.
+/// </summary>
 public enum RefundStatus { Pending, Completed, Cancelled }
 
 /// <summary>Why money goes back: the whole order was cancelled, or a paid order was reduced.</summary>
@@ -122,7 +126,7 @@ public class Refund
     public Payment Payment { get; set; } = null!;
     public decimal Amount { get; set; }
     public RefundKind Kind { get; set; } = RefundKind.Cancellation;
-    public RefundStatus Status { get; set; } = RefundStatus.Pending;
+    public RefundStatus Status { get; set; } = RefundStatus.Completed;
     public DateTimeOffset RequestedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? RequestedByUserId { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }

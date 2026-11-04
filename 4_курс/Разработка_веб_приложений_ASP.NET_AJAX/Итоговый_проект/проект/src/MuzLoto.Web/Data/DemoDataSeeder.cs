@@ -86,17 +86,17 @@ public static class DemoDataSeeder
             db.BookingStatusHistory.Add(new BookingStatusHistory { Booking = b, OldStatus = BookingStatus.Pending,
                 NewStatus = BookingStatus.Confirmed, ChangedByUserId = admin?.Id, ChangedAt = now.AddDays(-1), Reason = "Демо: оплата подтверждена" });
         }
-        void CancelPaid(Booking b, RefundStatus refundStatus)
+        void CancelPaid(Booking b)
         {
             Confirm(b);
             b.Status = BookingStatus.Cancelled;
             b.CancelledAt = now.AddDays(-1).AddHours(2);
             db.BookingStatusHistory.Add(new BookingStatusHistory { Booking = b, OldStatus = BookingStatus.Confirmed,
                 NewStatus = BookingStatus.Cancelled, ChangedByUserId = admin?.Id, ChangedAt = b.CancelledAt.Value, Reason = "Демо: отмена" });
-            db.Refunds.Add(new Refund { Payment = b.Payment!, Amount = b.Payment!.Amount, Status = refundStatus,
-                RequestedAt = b.CancelledAt.Value, RequestedByUserId = admin?.Id,
-                CompletedAt = refundStatus == RefundStatus.Completed ? now.AddHours(-3) : null,
-                CompletedByUserId = refundStatus == RefundStatus.Completed ? admin?.Id : null });
+            // Cancelling an order records the refund as completed right away (decision of 2026-11-04).
+            db.Refunds.Add(new Refund { Payment = b.Payment!, Amount = b.Payment!.Amount, Kind = RefundKind.Cancellation,
+                Status = RefundStatus.Completed, RequestedAt = b.CancelledAt.Value, RequestedByUserId = admin?.Id,
+                CompletedAt = b.CancelledAt.Value, CompletedByUserId = admin?.Id });
         }
 
         Book(sessions[0], "Меломаны", 4);
@@ -109,10 +109,12 @@ public static class DemoDataSeeder
         var playback = Book(sessions[2], "Фонограмма", 4, player.Id);
         Confirm(playback);
 
-        // Ticket-count changes on paid orders: one reduced (partial refund waiting), one waiting for a surcharge,
-        // one surcharge that was dropped.
+        // Ticket-count changes on paid orders: one reduced (partial refund recorded as returned), one waiting for a
+        // surcharge, one surcharge that was dropped.
         var partialRefund = new Refund { Payment = drums.Payment!, Amount = 2 * drums.TicketPriceSnapshot,
-            Kind = RefundKind.QuantityDecrease, RequestedAt = now.AddHours(-5), RequestedByUserId = admin?.Id };
+            Kind = RefundKind.QuantityDecrease, Status = RefundStatus.Completed,
+            RequestedAt = now.AddHours(-5), RequestedByUserId = admin?.Id,
+            CompletedAt = now.AddHours(-5), CompletedByUserId = admin?.Id };
         db.Refunds.Add(partialRefund);
         db.QuantityChanges.AddRange(
             new QuantityChange { Booking = drums, OldQuantity = 8, NewQuantity = 6, Amount = partialRefund.Amount,
@@ -125,9 +127,9 @@ public static class DemoDataSeeder
                 CompletedAt = now.AddHours(-1), CompletedByUserId = admin?.Id });
         drums.Quantity = 6;
 
-        CancelPaid(Book(sessions[0], "Опоздавшие", 2), RefundStatus.Pending);
-        CancelPaid(Book(sessions[3], "Передумавшие", 3), RefundStatus.Completed);
-        CancelPaid(Book(sessions[4], "Вернёмся позже", 2), RefundStatus.Pending);
+        CancelPaid(Book(sessions[0], "Опоздавшие", 2));
+        CancelPaid(Book(sessions[3], "Передумавшие", 3));
+        CancelPaid(Book(sessions[4], "Вернёмся позже", 2));
         await db.SaveChangesAsync();
     }
 

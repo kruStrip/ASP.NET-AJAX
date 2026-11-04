@@ -14,7 +14,6 @@
     <p>@b.CustomerName · @b.Quantity бил. · <a href="tel:@b.Phone">@b.Phone</a> · ID @b.Id.ToString()[..8]</p>
     <p>Оплачено <b>@row.Paid.ToString("N2") ₽</b>
        @if (row.Refunded > 0) { <span>· возвращено @row.Refunded.ToString("N2") ₽</span> }
-       @if (row.RefundPending > 0) { <span>· ожидает возврата @row.RefundPending.ToString("N2") ₽</span> }
        @if (row.Changes > 0) { <span>· изменений количества: @row.Changes</span> }</p>
     <span class="status @(b.Status == BookingStatus.Confirmed ? "confirmed" : "cancelled")">@(b.Status == BookingStatus.Confirmed ? (b.GameSession.CompletedAt.HasValue ? "Игра прошла" : "Оплачено") : "Отменено")</span>
     </div></article>

@@ -11,7 +11,7 @@ namespace MuzLoto.Web.Pages.Bookings;
 public class HistoryModel(AppDbContext db, IAuthorizationService authorization) : BookingListBase(db, authorization)
 {
     public const int PageSize = 50;
-    public sealed record Row(Booking Booking, decimal Paid, decimal Refunded, decimal RefundPending, int Changes);
+    public sealed record Row(Booking Booking, decimal Paid, decimal Refunded, int Changes);
 
     [BindProperty(SupportsGet = true)] public int PageNumber { get; set; } = 1;
     public List<Row> Rows { get; private set; } = new();
@@ -25,7 +25,6 @@ public class HistoryModel(AppDbContext db, IAuthorizationService authorization) 
             .Skip((PageNumber - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new Row(x, x.Payment!.Amount,
                 x.Payment.Refunds.Where(r => r.Status == RefundStatus.Completed).Sum(r => (decimal?)r.Amount) ?? 0,
-                x.Payment.Refunds.Where(r => r.Status == RefundStatus.Pending).Sum(r => (decimal?)r.Amount) ?? 0,
                 x.QuantityChanges.Count(c => c.Status == QuantityChangeStatus.Applied)))
             .ToListAsync(ct);
         HasMore = rows.Count > PageSize;

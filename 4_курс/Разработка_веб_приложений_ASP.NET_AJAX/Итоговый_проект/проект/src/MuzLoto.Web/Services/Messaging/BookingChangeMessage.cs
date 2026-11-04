@@ -27,7 +27,7 @@ public static class BookingChangeMessage
     }
 
     /// <param name="payment">What happened with the money, e.g. «оплачено 2 800 ₽» or «не оплачено».</param>
-    /// <param name="refund">The refund state, e.g. «возврат 2 800 ₽ поставлен в очередь» or «возврат не требуется».</param>
+    /// <param name="refund">The refund state, e.g. «возврат 2 800 ₽ отмечен как выполненный» or «возврат не требуется».</param>
     public static string Cancelled(Booking booking, GameSession session, Game game, string? actor,
         string payment, string refund, string siteUrl, int maxLength = 1024)
     {

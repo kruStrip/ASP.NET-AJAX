@@ -317,10 +317,8 @@ public sealed class BookingWorkflow(
                 var payment = booking.Payment
                     ?? throw new BusinessException("Подтверждённый платёж не найден: проверьте заказ.");
                 var cancellations = db.Refunds.Where(x => x.PaymentId == payment.Id && x.Kind == RefundKind.Cancellation);
-                if (await cancellations.AnyAsync(x => x.Status == RefundStatus.Completed, ct))
+                if (await cancellations.AnyAsync(x => x.Status != RefundStatus.Cancelled, ct))
                     throw new BusinessException("По этому платежу уже зафиксирован возврат.");
-                if (await cancellations.AnyAsync(x => x.Status == RefundStatus.Pending, ct))
-                    throw new BusinessException("Возврат уже ожидает выполнения.");
                 // Partial refunds for earlier reductions are owed separately; refund only the rest.
                 var alreadyOwed = await db.Refunds.Where(x => x.PaymentId == payment.Id &&
                         x.Kind == RefundKind.QuantityDecrease && x.Status != RefundStatus.Cancelled)
@@ -329,12 +327,16 @@ public sealed class BookingWorkflow(
                 paymentState = $"оплачено {Messaging.BookingChangeMessage.Money(payment.Amount)} ₽";
                 if (amount > 0)
                 {
+                    // The customer's money counts as returned as soon as the order is cancelled: staff asked for this
+                    // so they never have to confirm the transfer with a separate step. Restoring within the hour
+                    // reverses this record (see RestoreCancelledCoreAsync).
                     db.Refunds.Add(new Refund
                     {
                         PaymentId = payment.Id, Amount = amount, Kind = RefundKind.Cancellation,
-                        RequestedAt = now, RequestedByUserId = userId
+                        Status = RefundStatus.Completed, RequestedAt = now, RequestedByUserId = userId,
+                        CompletedAt = now, CompletedByUserId = userId
                     });
-                    refundState = $"возврат {Messaging.BookingChangeMessage.Money(amount)} ₽ поставлен в очередь";
+                    refundState = $"возврат {Messaging.BookingChangeMessage.Money(amount)} ₽ отмечен как выполненный";
                 }
                 else refundState = "часть оплаты уже возвращена — возврат не требуется";
                 // A surcharge that was never paid is simply dropped.
@@ -357,7 +359,7 @@ public sealed class BookingWorkflow(
                 BookingId = booking.Id, OldStatus = oldStatus, NewStatus = BookingStatus.Cancelled,
                 ChangedByUserId = userId, ChangedAt = now,
                 Reason = oldStatus == BookingStatus.Confirmed
-                    ? "Отмена заказа; возврат денег поставлен в очередь, но не выполнен"
+                    ? "Отмена заказа; возврат денег отмечен как выполненный"
                     : "Отмена неоплаченной заявки"
             });
             // Queued after the loop above, which drops the notices that no longer make sense.
@@ -476,7 +478,8 @@ public sealed class BookingWorkflow(
                 var refund = new Refund
                 {
                     PaymentId = booking.Payment.Id, Amount = change.Amount, Kind = RefundKind.QuantityDecrease,
-                    RequestedAt = now, RequestedByUserId = userId
+                    Status = RefundStatus.Completed, RequestedAt = now, RequestedByUserId = userId,
+                    CompletedAt = now, CompletedByUserId = userId
                 };
                 db.Refunds.Add(refund);
                 booking.Quantity = newQuantity;
@@ -490,7 +493,7 @@ public sealed class BookingWorkflow(
             [
                 change.IsIncrease
                     ? $"Билетов: {change.OldQuantity} → {change.NewQuantity} (ожидается доплата {Messaging.BookingChangeMessage.Money(change.Amount)} ₽)"
-                    : $"Билетов: {change.OldQuantity} → {change.NewQuantity} (места освобождены, возврат {Messaging.BookingChangeMessage.Money(change.Amount)} ₽)"
+                    : $"Билетов: {change.OldQuantity} → {change.NewQuantity} (места освобождены, возврат {Messaging.BookingChangeMessage.Money(change.Amount)} ₽ отмечен как выполненный)"
             ], ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
@@ -611,17 +614,17 @@ public sealed class BookingWorkflow(
             if (previousStatus is not (BookingStatus.Pending or BookingStatus.Confirmed))
                 throw new BusinessException("Исходный статус заявки некорректен.");
 
-            Refund? pendingRefundToCancel = null;
+            Refund? refundToCancel = null;
             if (previousStatus == BookingStatus.Confirmed)
             {
-                // Never restore after money actually left: a new payment is required.
                 var payment = await db.Payments.SingleOrDefaultAsync(x => x.BookingId == bookingId, ct)
                     ?? throw new BusinessException("Платёж не найден. Требуется проверка сотрудником.");
-                if (await db.Refunds.AnyAsync(x => x.PaymentId == payment.Id &&
-                    x.Kind == RefundKind.Cancellation && x.Status == RefundStatus.Completed, ct))
-                    throw new BusinessException("Деньги уже возвращены клиенту. Для нового бронирования нужна новая оплата.");
-                pendingRefundToCancel = await db.Refunds.SingleOrDefaultAsync(x =>
-                    x.PaymentId == payment.Id && x.Kind == RefundKind.Cancellation && x.Status == RefundStatus.Pending, ct);
+                // Cancelling the order immediately records the money as returned (decision of 2026-11-04).
+                // Restoring within the hour means no transfer happened, so that record is reversed instead
+                // of blocking the restore; the booking keeps its original payment.
+                refundToCancel = await db.Refunds.FirstOrDefaultAsync(x =>
+                    x.PaymentId == payment.Id && x.Kind == RefundKind.Cancellation &&
+                    x.Status != RefundStatus.Cancelled, ct);
                 var reserved = await db.Bookings
                     .Where(x => x.GameSessionId == session.Id && x.Status == BookingStatus.Confirmed)
                     .SumAsync(x => (int?)x.Quantity, ct) ?? 0;
@@ -629,12 +632,12 @@ public sealed class BookingWorkflow(
                     throw new BusinessException("Недостаточно свободных билетов для восстановления.");
             }
 
-            if (pendingRefundToCancel is not null)
+            if (refundToCancel is not null)
             {
-                // Restore cancels a request that was never paid out.
-                pendingRefundToCancel.Status = RefundStatus.Cancelled;
-                pendingRefundToCancel.CancelledAt = now;
-                pendingRefundToCancel.CancelledByUserId = userId;
+                // The auto-recorded refund is withdrawn: the money stays with us, no new payment is needed.
+                refundToCancel.Status = RefundStatus.Cancelled;
+                refundToCancel.CancelledAt = now;
+                refundToCancel.CancelledByUserId = userId;
             }
             booking.Status = previousStatus;
             booking.CancelledAt = null;
@@ -647,7 +650,7 @@ public sealed class BookingWorkflow(
             await QueueBookingChangedAsync(booking, userId,
             [
                 previousStatus == BookingStatus.Confirmed
-                    ? "Заявка восстановлена: «Отменена» → «Оплачена»" + (pendingRefundToCancel is not null ? " (запрос на возврат снят)" : "")
+                    ? "Заявка восстановлена: «Отменена» → «Оплачена»" + (refundToCancel is not null ? " (запись о возврате отменена, новый платёж не нужен)" : "")
                     : "Заявка восстановлена: «Отменена» → «Ожидает подтверждения»"
             ], ct);
             await db.SaveChangesAsync(ct);
@@ -661,54 +664,6 @@ public sealed class BookingWorkflow(
         await NotifyAsync(sessionId, "BookingUpdated", bookingId);
         await NotifyAsync(sessionId, "RefundCancelled", bookingId);
         await NotifyAsync(sessionId, "TicketsAvailabilityChanged", bookingId);
-    }
-
-    /// <summary>
-    /// Record a refund only AFTER an employee has actually transferred the money.
-    /// Booking cancellation itself never marks funds returned.
-    /// </summary>
-    public Task ConfirmRefundAsync(Guid refundId, string userId,
-        string? transferReference = null, CancellationToken ct = default) =>
-        WithRetry(() => ConfirmRefundCoreAsync(refundId, userId, transferReference, ct), ct);
-
-    private async Task ConfirmRefundCoreAsync(Guid refundId, string userId,
-        string? transferReference = null, CancellationToken ct = default)
-    {
-        if (transferReference?.Length > 200)
-            throw new BusinessException("Номер операции или комментарий слишком длинный.", 400);
-        Guid sessionId;
-        try
-        {
-            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-            var refund = await db.Refunds.Include(x => x.Payment)
-                .ThenInclude(x => x.Booking).SingleOrDefaultAsync(x => x.Id == refundId, ct)
-                ?? throw new BusinessException("Запрос на возврат не найден.", 404);
-            if (refund.Status == RefundStatus.Completed) return; // idempotent re-submit
-            if (refund.Status != RefundStatus.Pending)
-                throw new BusinessException("Этот запрос больше не ожидает возврата.");
-            if (refund.Kind == RefundKind.Cancellation && refund.Payment.Booking.Status != BookingStatus.Cancelled)
-                throw new BusinessException("Бронирование уже восстановлено. Возврат запрещён.");
-            if (refund.Payment.Status != PaymentStatus.Confirmed || refund.Amount <= 0)
-                throw new BusinessException("Данные суммы возврата некорректны.");
-            var completed = db.Refunds.Where(x => x.PaymentId == refund.PaymentId && x.Status == RefundStatus.Completed);
-            if (refund.Kind == RefundKind.Cancellation && await completed.AnyAsync(x => x.Kind == RefundKind.Cancellation, ct))
-                throw new BusinessException("Деньги по платежу уже возвращены.");
-            if ((await completed.SumAsync(x => (decimal?)x.Amount, ct) ?? 0) + refund.Amount > refund.Payment.Amount)
-                throw new BusinessException("Сумма возвратов превысила бы полученную оплату.");
-
-            refund.Status = RefundStatus.Completed;
-            refund.CompletedAt = DateTimeOffset.UtcNow;
-            refund.CompletedByUserId = userId;
-            refund.TransferReference = transferReference?.Trim();
-            await db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-            sessionId = refund.Payment.Booking.GameSessionId;
-        }
-        catch (Exception ex) when (DbErrors.IsSerializationFailure(ex))
-        {
-            throw new ConcurrencyConflictException("Статус возврата изменился одновременно. Обновите страницу.");
-        }
-        await NotifyAsync(sessionId, "RefundCompleted", refundId);
     }
 
     /// <summary>Undo an accidentally completed event; deleted pending bookings are not recreated.</summary>
